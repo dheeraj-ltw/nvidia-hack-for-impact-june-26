@@ -1,1 +1,1 @@
-"""Patrol Assist API — FastAPI backend package."""
+"""JARVIS API — FastAPI backend package."""

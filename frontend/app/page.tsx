@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Image from "next/image";
 import { Loader2, Play, Square, UserRound, Volume2, VolumeX } from "lucide-react";
 import { FeedView } from "@/components/FeedView";
 import { LogsPanel } from "@/components/LogsPanel";
@@ -48,7 +49,15 @@ export default function PatrolConsole() {
     <main className="mx-auto flex min-h-screen max-w-6xl flex-col gap-6 px-4 pb-6 md:px-6">
       <header className="sticky top-0 z-30 -mx-4 flex items-center justify-between gap-4 border-b border-border bg-bg/90 px-4 pb-4 pt-4 backdrop-blur-sm md:-mx-6 md:px-6">
         <div className="flex items-center gap-3">
-          <h1 className="text-base font-semibold tracking-tight">Patrol Assist</h1>
+          <Image
+            src="/jarvis-logo.svg"
+            alt="JARVIS"
+            width={23}
+            height={28}
+            priority
+            className="h-7 w-auto"
+          />
+          <h1 className="text-base font-semibold tracking-tight">JARVIS</h1>
           <StatusIndicator conn={state.conn} framesSent={state.framesSent} />
         </div>
 
