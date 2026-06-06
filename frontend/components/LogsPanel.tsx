@@ -27,10 +27,18 @@ function SectionHeader({ icon, label, count }: { icon: React.ReactNode; label: s
 
 /** Live logs beside the feed: cited guidance on top, the transcript stream pinned below. */
 export function LogsPanel({ transcript, guidance, active }: LogsPanelProps) {
-  const transcriptEndRef = useRef<HTMLDivElement | null>(null);
+  const transcriptScrollRef = useRef<HTMLDivElement | null>(null);
 
+  // Auto-scroll the transcript *container only* — never the page (which would yank the
+  // Stop button away). Skip if the user has scrolled up to read older lines.
   useEffect(() => {
-    transcriptEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    const container = transcriptScrollRef.current;
+    if (!container) return;
+    const distanceFromBottom =
+      container.scrollHeight - container.scrollTop - container.clientHeight;
+    if (distanceFromBottom < 80) {
+      container.scrollTop = container.scrollHeight;
+    }
   }, [transcript]);
 
   const hasGuidance = guidance.length > 0;
@@ -74,9 +82,12 @@ export function LogsPanel({ transcript, guidance, active }: LogsPanelProps) {
           icon={<MessageSquare className="h-3.5 w-3.5 text-muted" />}
           label="Transcript"
         />
-        <div className="flex min-h-0 flex-1 flex-col justify-end overflow-y-auto rounded-xl border border-border bg-panel p-3">
+        <div
+          ref={transcriptScrollRef}
+          className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain rounded-xl border border-border bg-panel p-3"
+        >
           {hasTranscript ? (
-            <div className="space-y-1.5 text-sm">
+            <div className="mt-auto space-y-1.5 text-sm">
               {transcript.map((line, index) => (
                 <p key={`${line.ts}-${index}`} className="animate-in leading-snug">
                   <span className="font-medium text-muted">{line.speaker}</span>
@@ -84,7 +95,6 @@ export function LogsPanel({ transcript, guidance, active }: LogsPanelProps) {
                   {line.text}
                 </p>
               ))}
-              <div ref={transcriptEndRef} />
             </div>
           ) : (
             <p className="flex items-center gap-2 text-sm text-muted">

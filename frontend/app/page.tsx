@@ -22,8 +22,8 @@ export default function PatrolConsole() {
   }, [state.conn]);
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-6xl flex-col gap-6 p-4 md:p-6">
-      <header className="flex items-center justify-between gap-4 border-b border-border pb-4">
+    <main className="mx-auto flex min-h-screen max-w-6xl flex-col gap-6 px-4 pb-6 md:px-6">
+      <header className="sticky top-0 z-30 -mx-4 flex items-center justify-between gap-4 border-b border-border bg-bg/90 px-4 pb-4 pt-4 backdrop-blur-sm md:-mx-6 md:px-6">
         <div className="flex items-center gap-3">
           <h1 className="text-base font-semibold tracking-tight">Patrol Assist</h1>
           <StatusIndicator conn={state.conn} framesSent={state.framesSent} />
