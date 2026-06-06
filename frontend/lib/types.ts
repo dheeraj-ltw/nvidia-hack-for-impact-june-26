@@ -21,7 +21,8 @@ export interface TranscriptEvent {
   type: "transcript";
   ts: number;
   text: string;
-  speaker: "officer" | "subject" | "unknown";
+  // "officer" / "subject" / "unknown" live; post-session ID also emits "person1", "person2", ...
+  speaker: string;
   is_final: boolean;
 }
 
@@ -63,6 +64,13 @@ export interface StatusEvent {
   session_id?: string | null;
 }
 
+export interface OfficerSummary {
+  officer_id: string;
+  name: string;
+  created_at: number;
+  has_audio: boolean;
+}
+
 export interface SessionSummary {
   session_id: string;
   label: string | null;
@@ -72,6 +80,7 @@ export interface SessionSummary {
   has_audio: boolean;
   has_video: boolean;
   event_count: number;
+  officer_name?: string | null;
 }
 
 export interface RecordedEvent {
@@ -90,6 +99,9 @@ export interface SessionManifest {
   audio_key: string | null;
   video_key: string | null;
   events: RecordedEvent[];
+  officer_id?: string | null;
+  officer_name?: string | null;
+  diarization?: Record<string, unknown> | null;
 }
 
 export type PatrolEvent =
