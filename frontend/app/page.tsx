@@ -2,10 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { FeedView } from "@/components/FeedView";
-import { GuidancePanel } from "@/components/GuidancePanel";
-import { SessionsList } from "@/components/SessionsList";
+import { LogsPanel } from "@/components/LogsPanel";
+import { SessionLibrary } from "@/components/SessionLibrary";
 import { StatusIndicator } from "@/components/StatusIndicator";
-import { TranscriptStream } from "@/components/TranscriptStream";
 import { usePatrolSession } from "@/lib/usePatrolSession";
 
 export default function PatrolConsole() {
@@ -13,13 +12,10 @@ export default function PatrolConsole() {
   const isLive = state.conn === "live";
   const isConnecting = state.conn === "connecting";
 
-  const hasTranscript = state.transcript.length > 0;
-  const hasGuidance = state.guidance.length > 0;
-
-  // Reload the recorded-sessions list whenever a recording finishes.
-  const [sessionsKey, setSessionsKey] = useState(0);
+  // Reload the recorded-sessions library whenever a recording finishes.
+  const [libraryKey, setLibraryKey] = useState(0);
   useEffect(() => {
-    if (state.conn === "closed") setSessionsKey((key) => key + 1);
+    if (state.conn === "closed") setLibraryKey((key) => key + 1);
   }, [state.conn]);
 
   return (
@@ -56,16 +52,13 @@ export default function PatrolConsole() {
         </div>
       )}
 
-      {/* Feed is full-width until guidance arrives, then the layout splits in two. */}
-      <div className={`grid grid-cols-1 gap-5 ${hasGuidance ? "lg:grid-cols-[2fr_1fr]" : ""}`}>
-        <div className="flex flex-col gap-5">
-          <FeedView videoRef={videoRef} boxes={state.boxes} active={isLive} />
-          {hasTranscript && <TranscriptStream transcript={state.transcript} />}
-        </div>
-        {hasGuidance && <GuidancePanel guidance={state.guidance} />}
+      {/* Live feed on the left, logs (guidance + transcript) on the right. */}
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1.7fr_1fr]">
+        <FeedView videoRef={videoRef} boxes={state.boxes} active={isLive} />
+        <LogsPanel transcript={state.transcript} guidance={state.guidance} active={isLive} />
       </div>
 
-      <SessionsList key={sessionsKey} />
+      <SessionLibrary key={libraryKey} />
     </main>
   );
 }

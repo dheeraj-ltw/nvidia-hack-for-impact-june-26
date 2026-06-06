@@ -65,10 +65,31 @@ export interface StatusEvent {
 
 export interface SessionSummary {
   session_id: string;
+  label: string | null;
   started_at: number;
   ended_at: number | null;
   frame_count: number;
   has_audio: boolean;
+  has_video: boolean;
+  event_count: number;
+}
+
+export interface RecordedEvent {
+  offset_seconds: number;
+  kind: "transcript" | "guidance";
+  payload: TranscriptEvent | GuidanceEvent;
+}
+
+export interface SessionManifest {
+  session_id: string;
+  label: string | null;
+  started_at: number;
+  ended_at: number | null;
+  frame_count: number;
+  has_audio: boolean;
+  audio_key: string | null;
+  video_key: string | null;
+  events: RecordedEvent[];
 }
 
 export type PatrolEvent =
