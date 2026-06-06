@@ -1,0 +1,209 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 480" width="400" height="480">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#070B1A"/>
+      <stop offset="100%" stop-color="#0D1535"/>
+    </linearGradient>
+    <radialGradient id="bgRadial" cx="50%" cy="45%" r="55%">
+      <stop offset="0%" stop-color="#0E1840" stop-opacity="1"/>
+      <stop offset="100%" stop-color="#070B1A" stop-opacity="1"/>
+    </radialGradient>
+    <linearGradient id="shieldFill" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#141E3C"/>
+      <stop offset="50%" stop-color="#0C1228"/>
+      <stop offset="100%" stop-color="#080F1E"/>
+    </linearGradient>
+    <linearGradient id="goldText" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FFE880"/>
+      <stop offset="45%" stop-color="#FFD700"/>
+      <stop offset="100%" stop-color="#B8860B"/>
+    </linearGradient>
+    <linearGradient id="goldBorder" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFE066"/>
+      <stop offset="50%" stop-color="#FFC200"/>
+      <stop offset="100%" stop-color="#CC8800"/>
+    </linearGradient>
+    <radialGradient id="orbCore" cx="40%" cy="38%" r="60%">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="30%" stop-color="#80EEFF"/>
+      <stop offset="70%" stop-color="#00AADD"/>
+      <stop offset="100%" stop-color="#003366"/>
+    </radialGradient>
+    <radialGradient id="orbHalo" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#00D4FF" stop-opacity="0.6"/>
+      <stop offset="60%" stop-color="#00AAFF" stop-opacity="0.2"/>
+      <stop offset="100%" stop-color="#0066CC" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="shieldGlow" cx="50%" cy="40%" r="50%">
+      <stop offset="0%" stop-color="#00AAFF" stop-opacity="0.12"/>
+      <stop offset="100%" stop-color="#00AAFF" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Glow filters -->
+    <filter id="cyanGlow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="goldGlow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="5" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="softGlow" x="-80%" y="-80%" width="260%" height="260%">
+      <feGaussianBlur stdDeviation="10" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="orbGlow" x="-100%" y="-100%" width="300%" height="300%">
+      <feGaussianBlur stdDeviation="7" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="400" height="480" fill="url(#bgGrad)"/>
+  <rect width="400" height="480" fill="url(#bgRadial)" opacity="0.6"/>
+
+  <!-- Subtle grid lines -->
+  <g opacity="0.08" stroke="#00D4FF" stroke-width="0.5">
+    <line x1="0" y1="96" x2="400" y2="96"/>
+    <line x1="0" y1="192" x2="400" y2="192"/>
+    <line x1="0" y1="288" x2="400" y2="288"/>
+    <line x1="0" y1="384" x2="400" y2="384"/>
+    <line x1="80" y1="0" x2="80" y2="480"/>
+    <line x1="160" y1="0" x2="160" y2="480"/>
+    <line x1="240" y1="0" x2="240" y2="480"/>
+    <line x1="320" y1="0" x2="320" y2="480"/>
+  </g>
+
+  <!-- Corner bracket accents -->
+  <g stroke="#00D4FF" stroke-width="2" fill="none" opacity="0.75">
+    <polyline points="18,52 18,18 52,18"/>
+    <polyline points="348,18 382,18 382,52"/>
+    <polyline points="18,428 18,462 52,462"/>
+    <polyline points="348,462 382,462 382,428"/>
+  </g>
+  <circle cx="18" cy="18" r="2.5" fill="#00D4FF" opacity="0.6"/>
+  <circle cx="382" cy="18" r="2.5" fill="#00D4FF" opacity="0.6"/>
+  <circle cx="18" cy="462" r="2.5" fill="#00D4FF" opacity="0.6"/>
+  <circle cx="382" cy="462" r="2.5" fill="#00D4FF" opacity="0.6"/>
+
+  <!-- Shield outer glow -->
+  <path d="M200,58 L322,101 L322,284 Q320,374 200,428 Q80,374 78,284 L78,101 Z"
+        fill="#00AAFF" opacity="0.06" filter="url(#softGlow)"/>
+
+  <!-- Shield gold outer border -->
+  <path d="M200,60 L320,102 L320,283 Q318,372 200,426 Q82,372 80,283 L80,102 Z"
+        fill="none" stroke="url(#goldBorder)" stroke-width="3"/>
+
+  <!-- Shield main fill -->
+  <path d="M200,63 L317,104 L317,281 Q315,368 200,421 Q85,368 83,281 L83,104 Z"
+        fill="url(#shieldFill)"/>
+
+  <!-- Shield inner glow fill -->
+  <path d="M200,63 L317,104 L317,281 Q315,368 200,421 Q85,368 83,281 L83,104 Z"
+        fill="url(#shieldGlow)"/>
+
+  <!-- Shield inner cyan border -->
+  <path d="M200,75 L305,113 L305,277 Q303,356 200,406 Q97,356 95,277 L95,113 Z"
+        fill="none" stroke="#00D4FF" stroke-width="1.2" opacity="0.55"/>
+
+  <!-- Innermost accent ring -->
+  <path d="M200,86 L295,121 L295,272 Q293,344 200,391 Q107,344 105,272 L105,121 Z"
+        fill="none" stroke="#00D4FF" stroke-width="0.5" opacity="0.22"/>
+
+  <!-- Hexagon outer ring (Iron Man HUD) -->
+  <polygon points="200,116 248,143 248,197 200,224 152,197 152,143"
+           fill="#050A1C" stroke="url(#goldBorder)" stroke-width="2" filter="url(#cyanGlow)"/>
+
+  <!-- Hexagon inner ring -->
+  <polygon points="200,123 241,147 241,191 200,215 159,191 159,147"
+           fill="none" stroke="#00D4FF" stroke-width="1" opacity="0.5"/>
+
+  <!-- Hex corner tick marks -->
+  <g stroke="#00D4FF" stroke-width="1.5" opacity="0.8" filter="url(#cyanGlow)">
+    <line x1="200" y1="116" x2="200" y2="107"/>
+    <line x1="248" y1="143" x2="255" y2="139"/>
+    <line x1="248" y1="197" x2="255" y2="201"/>
+    <line x1="200" y1="224" x2="200" y2="233"/>
+    <line x1="152" y1="197" x2="145" y2="201"/>
+    <line x1="152" y1="143" x2="145" y2="139"/>
+  </g>
+
+  <!-- Orb halo -->
+  <circle cx="200" cy="170" r="34" fill="url(#orbHalo)" filter="url(#orbGlow)"/>
+
+  <!-- Arc reactor orb rings -->
+  <circle cx="200" cy="170" r="20" fill="none" stroke="#00D4FF" stroke-width="1" opacity="0.35"/>
+  <circle cx="200" cy="170" r="25" fill="none" stroke="#00D4FF" stroke-width="0.5" opacity="0.2"/>
+
+  <!-- Orb main -->
+  <circle cx="200" cy="170" r="17" fill="url(#orbCore)" filter="url(#cyanGlow)"/>
+  <circle cx="200" cy="170" r="11" fill="white" opacity="0.92"/>
+  <circle cx="200" cy="170" r="6" fill="#00CCFF"/>
+  <circle cx="197" cy="167" r="2" fill="white" opacity="0.7"/>
+
+  <!-- Sound waves — LEFT -->
+  <path d="M181,160 Q173,170 181,180" fill="none" stroke="#00D4FF" stroke-width="2.2"
+        stroke-linecap="round" opacity="0.95" filter="url(#cyanGlow)"/>
+  <path d="M171,153 Q158,170 171,187" fill="none" stroke="#00D4FF" stroke-width="1.6"
+        stroke-linecap="round" opacity="0.6" filter="url(#cyanGlow)"/>
+  <path d="M161,146 Q143,170 161,194" fill="none" stroke="#00D4FF" stroke-width="1"
+        stroke-linecap="round" opacity="0.3"/>
+
+  <!-- Sound waves — RIGHT -->
+  <path d="M219,160 Q227,170 219,180" fill="none" stroke="#00D4FF" stroke-width="2.2"
+        stroke-linecap="round" opacity="0.95" filter="url(#cyanGlow)"/>
+  <path d="M229,153 Q242,170 229,187" fill="none" stroke="#00D4FF" stroke-width="1.6"
+        stroke-linecap="round" opacity="0.6" filter="url(#cyanGlow)"/>
+  <path d="M239,146 Q257,170 239,194" fill="none" stroke="#00D4FF" stroke-width="1"
+        stroke-linecap="round" opacity="0.3"/>
+
+  <!-- JARVIS main text shadow layer -->
+  <text x="202" y="275"
+        font-family="'Arial Black','Arial Bold',Arial,sans-serif"
+        font-size="56" font-weight="900"
+        fill="#FFD700" text-anchor="middle" letter-spacing="10"
+        opacity="0.18" filter="url(#softGlow)">JARVIS</text>
+
+  <!-- JARVIS main text -->
+  <text x="200" y="273"
+        font-family="'Arial Black','Arial Bold',Arial,sans-serif"
+        font-size="56" font-weight="900"
+        fill="url(#goldText)" text-anchor="middle" letter-spacing="10"
+        filter="url(#goldGlow)">JARVIS</text>
+
+  <!-- Divider with diamond accent -->
+  <line x1="108" y1="287" x2="182" y2="287" stroke="#00D4FF" stroke-width="1" opacity="0.65"/>
+  <polygon points="200,282 206,287 200,292 194,287" fill="#00D4FF" opacity="0.8"/>
+  <line x1="218" y1="287" x2="292" y2="287" stroke="#00D4FF" stroke-width="1" opacity="0.65"/>
+
+  <!-- Tagline -->
+  <text x="200" y="307"
+        font-family="Arial,sans-serif" font-size="9.5" font-weight="bold"
+        fill="#00D4FF" text-anchor="middle" letter-spacing="3.8" opacity="0.9">JUDICIAL ADVISOR</text>
+  <text x="200" y="323"
+        font-family="Arial,sans-serif" font-size="9.5"
+        fill="#00D4FF" text-anchor="middle" letter-spacing="3.8" opacity="0.75">REAL-TIME VOICE INTELLIGENCE</text>
+
+  <!-- Three stars -->
+  <text x="159" y="364" font-size="13" fill="#FFD700" text-anchor="middle"
+        filter="url(#goldGlow)" opacity="0.9">★</text>
+  <text x="200" y="371" font-size="17" fill="#FFD700" text-anchor="middle"
+        filter="url(#goldGlow)">★</text>
+  <text x="241" y="364" font-size="13" fill="#FFD700" text-anchor="middle"
+        filter="url(#goldGlow)" opacity="0.9">★</text>
+
+  <!-- Bottom tagline -->
+  <text x="200" y="400"
+        font-family="Arial,sans-serif" font-size="7.5"
+        fill="#FFFFFF" text-anchor="middle" letter-spacing="3"
+        opacity="0.3">YOUR INNER VOICE · BY THE LAW</text>
+
+  <!-- Small circuit dots scattered on shield -->
+  <circle cx="130" cy="230" r="1.5" fill="#00D4FF" opacity="0.4"/>
+  <circle cx="136" cy="230" r="1.5" fill="#00D4FF" opacity="0.3"/>
+  <line x1="130" y1="230" x2="118" y2="230" stroke="#00D4FF" stroke-width="0.8" opacity="0.25"/>
+
+  <circle cx="270" cy="230" r="1.5" fill="#00D4FF" opacity="0.4"/>
+  <circle cx="264" cy="230" r="1.5" fill="#00D4FF" opacity="0.3"/>
+  <line x1="270" y1="230" x2="282" y2="230" stroke="#00D4FF" stroke-width="0.8" opacity="0.25"/>
+</svg>

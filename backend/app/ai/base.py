@@ -23,6 +23,20 @@ class Frame:
 
 
 @dataclass(slots=True)
+class Transcription:
+    """A transcribed audio clip: the text plus optional per-word diarization.
+
+    `words` carries ElevenLabs' word-level speaker split for *this clip* — used to label the
+    speaker by isolating the dominant voice's audio before matching it to the officer. Empty
+    when the backend doesn't diarize (e.g. the stub); the speaker then defaults to the officer.
+    """
+
+    text: str
+    is_final: bool
+    words: list[dict] = field(default_factory=list)
+
+
+@dataclass(slots=True)
 class ReasoningInput:
     """Aggregated context handed to the reasoner to produce law-aligned guidance."""
 
@@ -37,8 +51,8 @@ class ReasoningInput:
 class AIService(Protocol):
     """Contract for all AI capabilities. Implementations must be async and stateless."""
 
-    async def transcribe(self, audio_chunk: bytes) -> tuple[str, bool]:
-        """Return (text, is_final) for an audio chunk. Empty text => nothing recognized."""
+    async def transcribe(self, audio_chunk: bytes) -> Transcription:
+        """Transcribe an audio chunk. Empty text => nothing recognized."""
         ...
 
     async def analyze_frame(self, frame: Frame) -> tuple[list[BoundingBox], str]:
