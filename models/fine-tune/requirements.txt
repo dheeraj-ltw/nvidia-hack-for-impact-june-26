@@ -1,0 +1,25 @@
+# QLoRA fine-tuning dependencies for lora-train.py
+# Target hardware: NVIDIA DGX Spark (GB10 Grace Blackwell, CUDA 12.x)
+#
+# Install PyTorch separately first, matched to your CUDA build, e.g.:
+#   pip install torch --index-url https://download.pytorch.org/whl/cu124
+# then:
+#   pip install -r requirements.txt
+
+# Core training stack
+torch>=2.4.0
+transformers>=4.45.0
+trl>=0.11.0
+peft>=0.13.0
+datasets>=2.20.0
+accelerate>=0.34.0
+
+# 4-bit (NF4) quantisation + paged_adamw_8bit optimiser
+bitsandbytes>=0.43.0
+
+# Safe serialization of merged model weights
+safetensors>=0.4.3
+
+# Optional: FlashAttention-2 (attn_implementation="flash_attention_2").
+# Requires a CUDA toolkit + nvcc at build time; comment out if unavailable.
+flash-attn>=2.6.0
