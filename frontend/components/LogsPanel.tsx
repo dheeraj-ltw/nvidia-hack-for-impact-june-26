@@ -66,7 +66,10 @@ export function LogsPanel({ transcript, guidance, active, officerName }: LogsPan
   }
 
   return (
-    <aside className="flex h-full min-h-0 flex-col gap-4">
+    // Bound the panel to the viewport so the guidance/transcript sections scroll *inside*
+    // rather than growing the page. Without a definite height here, the flex `min-h-0` +
+    // `overflow-y-auto` below can never engage (the page just gets taller and scrolls).
+    <aside className="flex h-full max-h-[60vh] min-h-0 flex-col gap-4 lg:max-h-[calc(100dvh-7rem)]">
       {hasGuidance && (
         <section className="flex max-h-[55%] min-h-0 flex-col gap-2">
           <SectionHeader

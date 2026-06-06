@@ -131,7 +131,16 @@ export function usePatrolSession() {
     socketRef.current = null;
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
-    setState((prev) => ({ ...prev, conn: "closed" }));
+    // Clear the live panel: the patrol is over and the full session is persisted
+    // server-side (it appears under Recorded sessions). Leaving the transcript/guidance
+    // up would strand a stale live view until the next patrol resets it.
+    setState((prev) => ({
+      ...prev,
+      conn: "closed",
+      boxes: [],
+      transcript: [],
+      guidance: [],
+    }));
   }, []);
 
   /**
