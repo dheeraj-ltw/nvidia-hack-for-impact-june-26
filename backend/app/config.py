@@ -21,6 +21,13 @@ class Settings(BaseSettings):
     nvidia_base_url: str = "https://integrate.api.nvidia.com/v1"
     nemotron_model: str = "nvidia/llama-3.1-nemotron-70b-instruct"
 
+    # Nebius Token Factory — hosted Qwen2.5-VL. Powers live scene captioning (the
+    # Video→VLM→scene-summary branch) when AI_BACKEND=live. Leave nebius_api_key blank to
+    # skip vision: analyze_frame then degrades to no summary and the reasoner runs on audio.
+    nebius_api_key: str = ""
+    nebius_base_url: str = "https://api.tokenfactory.nebius.com/v1/"
+    nebius_vlm_model: str = "Qwen/Qwen2.5-VL-72B-Instruct"
+
     # Fine-tuned PoliceAI reasoner — an OpenAI-compatible server (see police-llm/).
     # The model was trained on SCENE CARD prompts; reason() rebuilds that exact format.
     # The server runs unauthenticated, so no API key is sent.
