@@ -163,8 +163,44 @@ base image (not `runtime`) and rebuild:
 docker compose build --no-cache
 ```
 
-At **runtime**, the container must have GPU access (`deploy.resources.reservations
-.devices` in compose, or `docker run --gpus all`).
+At **runtime**, the container must have GPU access. Compose uses `gpus: all`
+(not `deploy.resources`, which is ignored outside Swarm).
+
+### `curl: (56) Recv failure: Connection reset by peer`
+
+This almost always means the **process crashed** during inference (OOM kill or
+native CUDA segfault), not a normal HTTP error. Diagnose in order:
+
+```bash
+# 1. Is the server up and the model loaded?
+curl -s http://localhost:8001/health | jq .
+curl -s http://localhost:8001/ready  | jq .
+
+# 2. Check container logs (look for OOM, CUDA errors, or segfault)
+docker compose logs -f police-llm
+
+# 3. Confirm GPU is visible inside the container
+docker compose exec police-llm nvidia-smi -L
+
+# 4. Confirm the GGUF exists at MODEL_PATH
+docker compose exec police-llm ls -lh /models/
+```
+
+**Common fixes:**
+
+- Ensure `gpus: all` is in `docker-compose.yml` (already set).
+- Lower memory pressure: `N_CTX=4096`, `N_BATCH=256` in `.env`.
+- If GPU offload is broken, try CPU fallback: `N_GPU_LAYERS=0` (slow but stable).
+- Start with a tiny request to rule out timeout/OOM:
+
+```bash
+curl http://localhost:8001/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model":"policeai-super-49b","messages":[{"role":"user","content":"Hi"}],"max_tokens":8}'
+```
+
+First inference on a 49B model can take **minutes** — wait for a JSON response,
+don't assume it hung.
 
 ## Notes & limitations
 

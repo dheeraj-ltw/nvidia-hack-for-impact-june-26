@@ -31,8 +31,8 @@ class Settings:
     # ---- llama.cpp runtime ----
     # -1 => offload all layers to GPU. Use 0 for CPU-only.
     n_gpu_layers: int = _as_int("N_GPU_LAYERS", -1)
-    n_ctx: int = _as_int("N_CTX", 8192)
-    n_batch: int = _as_int("N_BATCH", 512)
+    n_ctx: int = _as_int("N_CTX", 4096)
+    n_batch: int = _as_int("N_BATCH", 256)
     # 0 => let llama.cpp pick a sensible default.
     n_threads: int = _as_int("N_THREADS", 0)
     # Override only if the GGUF lacks an embedded chat template. When None,
@@ -56,6 +56,8 @@ class Settings:
             n_ctx=self.n_ctx,
             n_batch=self.n_batch,
             verbose=self.verbose,
+            use_mmap=True,
+            use_mlock=False,
         )
         if self.n_threads > 0:
             kwargs["n_threads"] = self.n_threads

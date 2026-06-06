@@ -87,7 +87,8 @@ ENV MODEL_PATH=/models/model.gguf \
 
 EXPOSE 8000
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=120s --retries=5 \
-    CMD curl -fsS http://localhost:8000/health || exit 1
+# 49B model load can take several minutes on first start.
+HEALTHCHECK --interval=30s --timeout=10s --start-period=600s --retries=10 \
+    CMD curl -fsS http://localhost:8000/ready || exit 1
 
-CMD ["sh", "-c", "uvicorn app.main:app --host ${HOST} --port ${PORT}"]
+CMD ["sh", "-c", "uvicorn app.main:app --host ${HOST} --port ${PORT} --timeout-keep-alive 300"]
