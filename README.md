@@ -94,3 +94,71 @@ records are dropped.
 This is a hackathon research dataset. Generated legal guidance is **synthetic** and must be reviewed
 by a qualified person before any operational use. Citations are grounded in scraped law but should be
 re-verified against the live, in-force text.
+
+---
+
+# Patrol Assist
+
+AI decision-support for police patrol. A live video + audio feed streams to a backend that
+**records the session** (frames + audio) and runs it through a pluggable AI layer for scene
+understanding, speech-to-text, and law-aligned reasoning — surfacing **assistive, cited guidance**
+to the officer, with text-to-speech for hands-free use.
+
+> The system is **assistive and human-in-the-loop**. It suggests and cites law; it never decides.
+
+The AI is pluggable. Every session is recorded to object storage regardless of backend, so a
+model can analyze it later. Swapping `AI_BACKEND` changes the intelligence without touching the UI.
+
+## Architecture
+
+![Patrol Assist architecture](docs/architecture.png)
+
+The flow, per-component build status, and how to regenerate the diagram live in
+**[docs/architecture.md](docs/architecture.md)** (Mermaid source: [docs/architecture.mmd](docs/architecture.mmd)).
+
+| `AI_BACKEND` | Behavior |
+|--------------|----------|
+| `stub` (default) | Deterministic local detections/guidance for exercising the event path (no keys). |
+| `live` | ElevenLabs speech-to-text + text-to-speech (built); NVIDIA VLM + Nemotron reasoning (planned). |
+
+## Quick start
+
+```bash
+cp .env.example .env
+docker compose up --build
+```
+
+- Frontend: http://localhost:3000
+- API docs: http://localhost:8000/docs
+- MinIO console: http://localhost:9001 (`minioadmin` / `minioadmin`)
+
+To enable speech, set `AI_BACKEND=live` and add your `ELEVENLABS_API_KEY` (and `ELEVENLABS_VOICE_ID`)
+in `.env` — see [.env.example](.env.example).
+
+Click **Start patrol**, allow the camera, and the session records to MinIO. Stop it, and the
+recording appears under **Recorded sessions** with frame thumbnails and audio playback.
+
+### Local dev (without Docker)
+
+```bash
+# backend (needs a reachable MinIO/S3 — see .env)
+cd backend && uv sync && uv run uvicorn app.main:app --reload
+
+# frontend
+cd frontend && npm install && npm run dev
+```
+
+## Repo layout
+
+| Path | What |
+|------|------|
+| `backend/app/realtime/` | WebSocket ingest of frames + audio |
+| `backend/app/recording/` | Per-session recorder + ffmpeg MP4 encoder → object storage |
+| `backend/app/storage/` | Async S3/MinIO client |
+| `backend/app/api/sessions.py` | Sessions API — list / detail / playback / rename / delete |
+| `backend/app/ai/` | `AIService` interface — `stub` and `live` (ElevenLabs STT/TTS) backends |
+| `backend/app/pipeline/` | Orchestrator: frame/audio → AI → events |
+| `frontend/app/` | Live patrol console |
+| `frontend/components/` | Feed, logs panel, session library, playback modal, UI primitives |
+| `frontend/lib/` | WebSocket client, capture loop, API client, types |
+| `docs/` | Architecture diagram + write-up |

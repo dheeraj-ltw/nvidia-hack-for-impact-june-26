@@ -53,26 +53,53 @@ Estimated memory during training
   Total:                     ~38 GB  →  well within 128 GB
 
 Usage:
-  python train_lora.py \
-    --data_path  ../../models/rag/training_data/legal_qa.jsonl \
-    --output_dir ./checkpoints/nemotron-super-49b-policeai-v1 \
-    --hf_token   hf_XXXX
+  # Train on train.jsonl, evaluating against val.jsonl during training:
+  python lora-train.py \
+    --data_path     ../data/train.jsonl \
+    --val_data_path ../data/val.jsonl \
+    --output_dir    ./checkpoints/nemotron-super-49b-policeai-v1 \
+    --hf_token      hf_XXXX
+
+  # Later, re-evaluate the fine-tuned adapter against val.jsonl to get a score
+  # (eval loss + perplexity) WITHOUT retraining:
+  python lora-train.py \
+    --eval_only \
+    --adapter_path  ./checkpoints/nemotron-super-49b-policeai-v1 \
+    --val_data_path ../data/val.jsonl \
+    --hf_token      hf_XXXX
+
+  # Merge LoRA -> bf16 and convert to a GGUF that llama.cpp can serve
+  # (--merge_only skips training and operates on the saved checkpoint):
+  python lora-train.py \
+    --merge_only \
+    --to_gguf \
+    --adapter_path  ./checkpoints/nemotron-super-49b-policeai-v1 \
+    --llama_cpp_dir /path/to/llama.cpp \
+    --gguf_quant    Q4_K_M \
+    --hf_token      hf_XXXX
 """
 
 import argparse
 import json
+import math
 import os
+import subprocess
 import sys
 from pathlib import Path
 
 import torch
 from datasets import Dataset
-from peft import LoraConfig, TaskType, get_peft_model, prepare_model_for_kbit_training
+from peft import (
+    LoraConfig,
+    PeftModel,
+    TaskType,
+    get_peft_model,
+    prepare_model_for_kbit_training,
+)
 from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
     BitsAndBytesConfig,
-    TrainingArguments,
 )
 from trl import SFTConfig, SFTTrainer
 
@@ -107,7 +134,12 @@ def parse_args() -> argparse.Namespace:
                    help="Pin the HF model revision (commit hash/tag). Pinning a "
                         "commit stops the custom DeciLM remote code from silently "
                         "re-downloading on each run.")
-    p.add_argument("--data_path", default="../../models/rag/training_data/legal_qa.jsonl")
+    p.add_argument("--data_path", default="../data/train.jsonl",
+                   help="JSONL training set (one {\"messages\": [...]} object per line).")
+    p.add_argument("--val_data_path", default="../data/val.jsonl",
+                   help="JSONL evaluation set. Used as the eval split during training "
+                        "and as the scoring set in --eval_only mode. If the file does "
+                        "not exist, training falls back to a 90/10 split of --data_path.")
     p.add_argument("--output_dir", default="./checkpoints/nemotron-super-49b-policeai-v1")
     p.add_argument("--hf_token", default=os.getenv("HF_TOKEN", ""))
     p.add_argument("--epochs", type=int, default=3)
@@ -126,7 +158,26 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--logging_steps", type=int, default=10)
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--merge_and_save", action="store_true",
-                   help="Merge LoRA weights into base model and save a single model directory")
+                   help="Merge LoRA weights into base model and save a single bf16 model directory")
+    p.add_argument("--merge_only", action="store_true",
+                   help="Skip training. Merge an existing adapter (from --adapter_path "
+                        "or --output_dir) and optionally convert to GGUF (--to_gguf).")
+    p.add_argument("--to_gguf", action="store_true",
+                   help="After merging, convert the bf16 model to GGUF for llama.cpp. "
+                        "Requires --llama_cpp_dir. Implies --merge_and_save.")
+    p.add_argument("--llama_cpp_dir", default="",
+                   help="Path to a local llama.cpp checkout (must contain "
+                        "convert_hf_to_gguf.py). Used by --to_gguf.")
+    p.add_argument("--gguf_quant", default="Q4_K_M",
+                   help="GGUF quantisation type to produce after the f16 conversion "
+                        "(e.g. Q4_K_M, Q5_K_M, Q8_0). Set to 'none' to keep f16 only.")
+    p.add_argument("--eval_only", action="store_true",
+                   help="Skip training. Load the fine-tuned LoRA adapter from "
+                        "--adapter_path and evaluate it against --val_data_path, "
+                        "reporting eval loss and perplexity.")
+    p.add_argument("--adapter_path", default="",
+                   help="Path to a saved LoRA adapter dir for --eval_only. "
+                        "Defaults to --output_dir when empty.")
     return p.parse_args()
 
 
@@ -145,7 +196,7 @@ def load_dataset(path: str) -> Dataset:
     if not records:
         sys.exit(f"No records found in {path}")
 
-    print(f"Loaded {len(records)} training examples from {path}")
+    print(f"Loaded {len(records)} examples from {path}")
     return Dataset.from_list(records)
 
 
@@ -158,6 +209,15 @@ def format_chat(example: dict, tokenizer) -> dict:
         add_generation_prompt=False,
     )
     return {"text": text}
+
+
+def prepare_dataset(path: str, tokenizer) -> Dataset:
+    """Load a JSONL chat dataset and render it to a single `text` column."""
+    raw_ds = load_dataset(path)
+    return raw_ds.map(
+        lambda ex: format_chat(ex, tokenizer),
+        remove_columns=raw_ds.column_names,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -200,38 +260,23 @@ def lora_config(r: int, alpha: int, dropout: float) -> LoraConfig:
 
 
 # ---------------------------------------------------------------------------
-# Main
+# Loaders (shared by training and eval-only)
 # ---------------------------------------------------------------------------
 
-def main():
-    args = parse_args()
-
-    Path(args.output_dir).mkdir(parents=True, exist_ok=True)
-
-    # ---- tokeniser ----
-    print(f"Loading tokeniser: {args.model_id}")
+def load_tokenizer(source: str, revision: str, hf_token: str):
     tokenizer = AutoTokenizer.from_pretrained(
-        args.model_id,
-        revision=args.revision,
-        token=args.hf_token or None,
+        source,
+        revision=revision,
+        token=hf_token or None,
         trust_remote_code=True,
     )
     tokenizer.pad_token = tokenizer.eos_token
     tokenizer.padding_side = "right"  # required for training (not left-pad)
+    return tokenizer
 
-    # ---- dataset ----
-    raw_ds = load_dataset(args.data_path)
-    ds = raw_ds.map(
-        lambda ex: format_chat(ex, tokenizer),
-        remove_columns=raw_ds.column_names,
-    )
 
-    # 90/10 train/eval split
-    split = ds.train_test_split(test_size=0.1, seed=args.seed)
-    train_ds, eval_ds = split["train"], split["test"]
-    print(f"Train: {len(train_ds)}  |  Eval: {len(eval_ds)}")
-
-    # ---- model (4-bit) ----
+def load_base_model(args: argparse.Namespace):
+    """Load the NF4/FP4-quantised base model, pinned to the single DGX Spark GPU."""
     print(f"Loading model in {args.quant_type.upper()}: {args.model_id}")
     model = AutoModelForCausalLM.from_pretrained(
         args.model_id,
@@ -248,8 +293,120 @@ def main():
                                          # eager (no SDPA path); FA2 has no sm_121
                                          # (GB10) wheel, so eager is the only option
     )
-    model.config.use_cache = False           # required for gradient checkpointing
     model.config.pretraining_tp = 1
+    return model
+
+
+def report_metrics(metrics: dict) -> dict:
+    """Print eval metrics and derive perplexity from eval loss."""
+    eval_loss = metrics.get("eval_loss")
+    if eval_loss is not None:
+        try:
+            metrics["eval_perplexity"] = math.exp(eval_loss)
+        except OverflowError:
+            metrics["eval_perplexity"] = float("inf")
+
+    print("\n================ Evaluation results ================")
+    for key in sorted(metrics):
+        value = metrics[key]
+        if isinstance(value, float):
+            print(f"  {key:24s} {value:.4f}")
+        else:
+            print(f"  {key:24s} {value}")
+    print("====================================================\n")
+    return metrics
+
+
+# ---------------------------------------------------------------------------
+# Eval-only mode
+# ---------------------------------------------------------------------------
+
+def run_eval(args: argparse.Namespace):
+    """Load a fine-tuned LoRA adapter and score it against --val_data_path."""
+    adapter_path = args.adapter_path or args.output_dir
+    if not Path(adapter_path).exists():
+        sys.exit(f"--eval_only: adapter path not found: {adapter_path}")
+    if not Path(args.val_data_path).exists():
+        sys.exit(f"--eval_only: validation file not found: {args.val_data_path}")
+
+    # Tokeniser was saved alongside the adapter during training; prefer it.
+    print(f"Loading tokeniser from adapter dir: {adapter_path}")
+    tokenizer = load_tokenizer(adapter_path, args.revision, args.hf_token)
+
+    eval_ds = prepare_dataset(args.val_data_path, tokenizer)
+    print(f"Eval examples: {len(eval_ds)}")
+
+    base_model = load_base_model(args)
+    base_model.config.use_cache = True  # eval/inference benefits from KV cache
+
+    print(f"Attaching LoRA adapter: {adapter_path}")
+    model = PeftModel.from_pretrained(base_model, adapter_path)
+    model.eval()
+
+    eval_args = SFTConfig(
+        output_dir=args.output_dir,
+        per_device_eval_batch_size=args.per_device_batch_size,
+        bf16=True,
+        report_to="none",
+        dataset_text_field="text",
+        max_seq_length=args.max_seq_length,
+        packing=False,
+    )
+
+    trainer = SFTTrainer(
+        model=model,
+        args=eval_args,
+        eval_dataset=eval_ds,
+        tokenizer=tokenizer,
+    )
+
+    print("Evaluating fine-tuned adapter on validation set …")
+    metrics = report_metrics(trainer.evaluate())
+
+    metrics_path = Path(adapter_path) / "eval_metrics.json"
+    with open(metrics_path, "w") as f:
+        json.dump(metrics, f, indent=2)
+    print(f"Wrote eval metrics to {metrics_path}")
+
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
+def main():
+    args = parse_args()
+
+    if args.eval_only:
+        run_eval(args)
+        return
+
+    if args.merge_only:
+        merged_dir = _merge_and_save(args)
+        if args.to_gguf:
+            _convert_to_gguf(merged_dir, args)
+        return
+
+    Path(args.output_dir).mkdir(parents=True, exist_ok=True)
+
+    # ---- tokeniser ----
+    print(f"Loading tokeniser: {args.model_id}")
+    tokenizer = load_tokenizer(args.model_id, args.revision, args.hf_token)
+
+    # ---- datasets ----
+    train_ds = prepare_dataset(args.data_path, tokenizer)
+    if args.val_data_path and Path(args.val_data_path).exists():
+        # Dedicated held-out validation set (preferred).
+        eval_ds = prepare_dataset(args.val_data_path, tokenizer)
+    else:
+        # Fallback: carve a 90/10 eval split out of the training data.
+        print(f"No val file at {args.val_data_path!r}; using a 90/10 split of train.")
+        split = train_ds.train_test_split(test_size=0.1, seed=args.seed)
+        train_ds, eval_ds = split["train"], split["test"]
+    print(f"Train: {len(train_ds)}  |  Eval: {len(eval_ds)}")
+
+    # ---- model (4-bit) ----
+    model = load_base_model(args)
+    model.config.use_cache = False           # required for gradient checkpointing
 
     # ---- prepare for QLoRA ----
     model = prepare_model_for_kbit_training(
@@ -305,41 +462,130 @@ def main():
     trainer.save_model(args.output_dir)
     tokenizer.save_pretrained(args.output_dir)
 
+    # ---- final evaluation on the held-out validation set ----
+    metrics = report_metrics(trainer.evaluate())
+    metrics_path = Path(args.output_dir) / "eval_metrics.json"
+    with open(metrics_path, "w") as f:
+        json.dump(metrics, f, indent=2)
+    print(f"Wrote eval metrics to {metrics_path}")
+
     # ---- optional: merge adapters into base model ----
-    if args.merge_and_save:
-        _merge_and_save(args)
+    if args.merge_and_save or args.to_gguf:
+        merged_dir = _merge_and_save(args)
+        if args.to_gguf:
+            _convert_to_gguf(merged_dir, args)
 
 
 def _merge_and_save(args: argparse.Namespace):
     """
     Merges LoRA adapters back into the base model weights and saves a
-    standalone model directory that can be converted to a TensorRT-LLM
-    engine for low-latency serving on DGX Spark.
+    standalone, UN-QUANTISED (bf16) HF model directory. This bf16 directory is
+    the artifact required by BOTH downstream serving paths:
 
-    Convert to TRT-LLM engine after this step:
-      trtllm-build --checkpoint_dir <merged_dir> \
-                   --output_dir    ./trt-engines/policeai-super-49b \
-                   --gemm_plugin   bfloat16 \
-                   --max_batch_size 4
+    A) llama.cpp / GGUF (recommended on DGX Spark — see compatibility notes):
+       The DeciLM/Nemotron-Super architecture is supported by llama.cpp's
+       converter. NOTE: the converter cannot read 4-bit (bnb/modelopt) weights,
+       so you MUST convert from this merged bf16 dir, not from the adapter.
+
+         # one-time: build llama.cpp from source for GB10 (sm_121, CUDA 13)
+         git clone https://github.com/ggml-org/llama.cpp && cd llama.cpp
+         cmake -B build -DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=121
+         cmake --build build --config Release -j
+
+         # convert merged HF model -> GGUF, then quantise to Q4_K_M
+         python convert_hf_to_gguf.py <merged_dir> \
+                --outfile policeai-super-49b-f16.gguf --outtype f16
+         ./build/bin/llama-quantize policeai-super-49b-f16.gguf \
+                policeai-super-49b-Q4_K_M.gguf Q4_K_M
+
+         # serve / run inference
+         ./build/bin/llama-server -m policeai-super-49b-Q4_K_M.gguf --n-gpu-layers 999
+
+    B) TensorRT-LLM engine (lowest latency, more build effort):
+         trtllm-build --checkpoint_dir <merged_dir> \
+                      --output_dir    ./trt-engines/policeai-super-49b \
+                      --gemm_plugin   bfloat16 \
+                      --max_batch_size 4
     """
     from peft import AutoPeftModelForCausalLM
 
-    merged_dir = args.output_dir + "-merged"
-    print(f"Merging LoRA into base weights → {merged_dir}")
+    adapter_path = args.adapter_path or args.output_dir
+    if not Path(adapter_path).exists():
+        sys.exit(f"Adapter path not found: {adapter_path}")
 
+    merged_dir = adapter_path.rstrip("/") + "-merged"
+    print(f"Merging LoRA ({adapter_path}) into base weights → {merged_dir}")
+
+    # Merge on CPU: the bf16 49B base is ~98 GB. Loading it on the GPU via
+    # device_map="auto" risks OOM/offload; merging in the unified host RAM is
+    # safe and the result is identical. trust_remote_code is REQUIRED because
+    # the base is a custom DeciLM architecture.
     merged_model = AutoPeftModelForCausalLM.from_pretrained(
-        args.output_dir,
-        device_map="auto",
+        adapter_path,
+        device_map="cpu",
         torch_dtype=torch.bfloat16,
+        low_cpu_mem_usage=True,
+        trust_remote_code=True,
+        token=args.hf_token or None,
     )
     merged_model = merged_model.merge_and_unload()
     merged_model.save_pretrained(merged_dir, safe_serialization=True)
 
-    tokenizer = AutoTokenizer.from_pretrained(args.output_dir)
+    tokenizer = load_tokenizer(adapter_path, args.revision, args.hf_token)
     tokenizer.save_pretrained(merged_dir)
 
-    print(f"Merged model saved to {merged_dir}")
-    print("Next step: convert to TensorRT-LLM engine for DGX Spark serving.")
+    print(f"Merged bf16 model saved to {merged_dir}")
+    print("Next step: convert to GGUF for llama.cpp (see _merge_and_save docstring), "
+          "or build a TensorRT-LLM engine.")
+    return merged_dir
+
+
+def _convert_to_gguf(merged_dir: str, args: argparse.Namespace):
+    """
+    Convert the merged bf16 HF model to GGUF and (optionally) quantise it so it
+    can be loaded by llama.cpp / llama-cpp-python for inference.
+
+    The DeciLM/Nemotron-Super architecture is supported by llama.cpp's
+    convert_hf_to_gguf.py, but ONLY from un-quantised (bf16/f16) weights — which
+    is exactly what _merge_and_save produced.
+    """
+    if not args.llama_cpp_dir:
+        sys.exit("--to_gguf requires --llama_cpp_dir pointing to a llama.cpp checkout.")
+
+    converter = Path(args.llama_cpp_dir) / "convert_hf_to_gguf.py"
+    if not converter.exists():
+        sys.exit(f"convert_hf_to_gguf.py not found at {converter}. "
+                 f"Clone https://github.com/ggml-org/llama.cpp first.")
+
+    out_name = Path(merged_dir).name
+    f16_path = str(Path(merged_dir).parent / f"{out_name}-f16.gguf")
+
+    print(f"Converting {merged_dir} → {f16_path}")
+    subprocess.run(
+        [sys.executable, str(converter), merged_dir,
+         "--outfile", f16_path, "--outtype", "f16"],
+        check=True,
+    )
+    print(f"GGUF (f16) written to {f16_path}")
+
+    if args.gguf_quant and args.gguf_quant.lower() != "none":
+        # llama-quantize lives in the build dir after compiling llama.cpp.
+        candidates = [
+            Path(args.llama_cpp_dir) / "build" / "bin" / "llama-quantize",
+            Path(args.llama_cpp_dir) / "llama-quantize",
+        ]
+        quant_bin = next((c for c in candidates if c.exists()), None)
+        if quant_bin is None:
+            print("WARNING: llama-quantize binary not found; keeping f16 GGUF only. "
+                  "Build llama.cpp (cmake --build) to enable quantisation.")
+            return
+
+        quant_path = str(Path(merged_dir).parent / f"{out_name}-{args.gguf_quant}.gguf")
+        print(f"Quantising → {quant_path} ({args.gguf_quant})")
+        subprocess.run([str(quant_bin), f16_path, quant_path, args.gguf_quant], check=True)
+        print(f"Quantised GGUF written to {quant_path}")
+        print(f"Run it with: {Path(args.llama_cpp_dir) / 'build' / 'bin' / 'llama-server'} "
+              f"-m {quant_path} --n-gpu-layers 999")
 
 
 if __name__ == "__main__":
