@@ -37,7 +37,7 @@ python3 -m vllm.entrypoints.openai.api_server \
     --max-model-len "${MAX_MODEL_LEN}" \
     --max-num-seqs "${MAX_NUM_SEQS}" \
     --enforce-eager \
-    --limit-mm-per-prompt "image=${MAX_FRAMES}" &
+    --limit-mm-per-prompt "{\"image\": ${MAX_FRAMES}}" &
 VLLM_PID=$!
 
 UVICORN_PID=""
