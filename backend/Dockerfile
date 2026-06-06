@@ -5,9 +5,10 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
 WORKDIR /app
 
-# ffmpeg is used to encode recorded sessions (frames + audio) into MP4.
+# ffmpeg encodes recorded sessions and decodes audio for speaker ID; gcc builds the
+# webrtcvad C extension that resemblyzer (speaker embeddings) depends on — no wheel exists.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ffmpeg \
+    && apt-get install -y --no-install-recommends ffmpeg build-essential \
     && rm -rf /var/lib/apt/lists/*
 
 ENV UV_COMPILE_BYTECODE=1 \

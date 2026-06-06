@@ -12,6 +12,10 @@ dependencies = [
     "websockets>=13",
     "python-multipart>=0.0.12",
     "aioboto3>=13.2",
+    # Speaker identification: local voice embeddings (resemblyzer pulls in torch),
+    # plus numpy for the cosine match. Audio is decoded via the ffmpeg already in the image.
+    "resemblyzer>=0.1.3",
+    "numpy>=1.26",
 ]
 
 [project.optional-dependencies]
@@ -33,6 +37,11 @@ select = ["E", "F", "I", "UP", "B", "ASYNC", "C4", "SIM"]
 python_version = "3.12"
 strict = true
 plugins = ["pydantic.mypy"]
+
+# resemblyzer and its transitive deps ship no type stubs.
+[[tool.mypy.overrides]]
+module = ["resemblyzer.*", "numpy.*"]
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
