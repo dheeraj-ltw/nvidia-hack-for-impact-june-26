@@ -25,7 +25,11 @@ SAMPLE_RATE = 16_000
 load_dotenv(ROOT / ".env")
 
 # Distinct ElevenLabs voices: the officer + three other people.
-VOICE_OFFICER = "aN0SWmSqDdwgj0ww8TIu"        # configured "officer" voice
+# The officer defaults to the configured/cloned ELEVENLABS_VOICE_ID, so a voice
+# cloned from a real officer is used here automatically.
+import os  # noqa: E402
+
+VOICE_OFFICER = os.environ.get("ELEVENLABS_VOICE_ID") or "aN0SWmSqDdwgj0ww8TIu"
 OTHER_VOICES = [
     "21m00Tcm4TlvDq8ikWAM",  # Rachel (female)
     "ErXwobaYiN019PkySvjV",  # Antoni (male)
