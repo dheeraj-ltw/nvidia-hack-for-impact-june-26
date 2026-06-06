@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { FileText, RefreshCw, X } from "lucide-react";
+import { Eye, FileText, Loader2, RefreshCw, X } from "lucide-react";
 import { GuidanceCard } from "@/components/GuidanceCard";
 import { formatSpeaker } from "@/components/LogsPanel";
 import { fetchReport, fetchSession, generateReport, videoUrl } from "@/lib/api";
@@ -33,10 +33,29 @@ export function PlaybackModal({ session, onClose }: PlaybackModalProps) {
   const videoElementRef = useRef<HTMLVideoElement | null>(null);
   const activeLogRef = useRef<HTMLDivElement | null>(null);
 
+  // Load the manifest, then poll while the post-session scene analysis is still pending
+  // (frames recorded but no scene_summary yet) so the scene context appears when it lands.
   useEffect(() => {
-    fetchSession(session.session_id).then(setManifest).catch(() => {
-      setError("Could not load this session.");
-    });
+    let cancelled = false;
+    let timer: number | undefined;
+
+    const load = async () => {
+      try {
+        const next = await fetchSession(session.session_id);
+        if (cancelled) return;
+        setManifest(next);
+        const scenePending = next.frame_count > 0 && next.scene_summary == null;
+        if (scenePending) timer = window.setTimeout(load, 3000);
+      } catch {
+        if (!cancelled) setError("Could not load this session.");
+      }
+    };
+
+    void load();
+    return () => {
+      cancelled = true;
+      if (timer) window.clearTimeout(timer);
+    };
   }, [session.session_id]);
 
   // Close on Escape.
@@ -146,6 +165,12 @@ export function PlaybackModal({ session, onClose }: PlaybackModalProps) {
                 <ReportPanel report={report} busy={reportBusy} onRegenerate={regenerateReport} />
               ) : (
                 <>
+                  {manifest && manifest.frame_count > 0 && (
+                    <SceneContext
+                      summary={manifest.scene_summary}
+                      onSeek={seekTo}
+                    />
+                  )}
                   <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">
                     Session log
                   </h3>
@@ -170,6 +195,60 @@ export function PlaybackModal({ session, onClose }: PlaybackModalProps) {
         )}
       </div>
     </div>
+  );
+}
+
+/** Parse one "[12s] caption" scene line into its offset + text (offset null if unprefixed). */
+function parseSceneLine(line: string): { offset: number | null; text: string } {
+  const match = line.match(/^\[(\d+(?:\.\d+)?)s\]\s*(.*)$/);
+  if (!match) return { offset: null, text: line };
+  return { offset: Number(match[1]), text: match[2] };
+}
+
+interface SceneContextProps {
+  // null/undefined => the post-session VLM pass hasn't finished yet; "" => ran, nothing to show.
+  summary: string | null | undefined;
+  onSeek: (offsetSeconds: number) => void;
+}
+
+function SceneContext({ summary, onSeek }: SceneContextProps) {
+  const pending = summary == null;
+  const lines = (summary ?? "").split("\n").map((l) => l.trim()).filter(Boolean);
+
+  return (
+    <section className="rounded-md border border-border bg-panel p-2.5">
+      <h3 className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted">
+        <Eye className="h-3.5 w-3.5" />
+        Scene context
+      </h3>
+      {pending ? (
+        <p className="flex items-center gap-2 text-sm text-muted">
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          Analyzing video…
+        </p>
+      ) : lines.length === 0 ? (
+        <p className="text-sm text-muted">No scene description available.</p>
+      ) : (
+        <ul className="space-y-1">
+          {lines.map((line, index) => {
+            const { offset, text } = parseSceneLine(line);
+            return (
+              <li key={index} className="text-sm leading-relaxed">
+                {offset != null && (
+                  <button
+                    onClick={() => onSeek(offset)}
+                    className="mr-1.5 font-mono text-[11px] text-muted transition-colors hover:text-fg"
+                  >
+                    {formatClock(offset)}
+                  </button>
+                )}
+                {text}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
   );
 }
 
@@ -238,6 +317,17 @@ function ReportPanel({ report, busy, onRegenerate }: ReportPanelProps) {
               </ul>
             )}
           </section>
+
+          {report.scene_summary && (
+            <section>
+              <h4 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted">
+                Scene context
+              </h4>
+              <pre className="whitespace-pre-wrap wrap-break-word rounded-md border border-border bg-panel p-2 text-xs leading-relaxed">
+                {report.scene_summary}
+              </pre>
+            </section>
+          )}
 
           <section>
             <h4 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted">

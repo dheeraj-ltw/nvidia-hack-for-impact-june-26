@@ -37,6 +37,8 @@ class SessionManifest(BaseModel):
     officer_id: str | None = None
     officer_name: str | None = None
     diarization: dict[str, Any] | None = None
+    # Post-session VLM scene description over the recorded frames (None until that pass runs).
+    scene_summary: str | None = None
 
     @property
     def duration_seconds(self) -> float:
@@ -73,6 +75,7 @@ class IncidentReport(BaseModel):
     transcript: str = ""  # full session transcript, speaker-tagged, in order
     guidance: list[GuidanceSummary] = Field(default_factory=list)
     speaker_labels: dict[str, Any] = Field(default_factory=dict)  # from diarization, if run
+    scene_summary: str = ""  # post-session VLM scene description, if run
 
 
 class WebhookDispatch(BaseModel):

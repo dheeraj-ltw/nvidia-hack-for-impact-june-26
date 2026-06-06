@@ -10,7 +10,9 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response, StreamingResponse
 
 from app.ai.speaker_id import SpeakerIdError, identify_officer
+from app.ai.vlm import VlmCaptioner
 from app.api.officers import load_profile
+from app.config import get_settings
 from app.models.events import EventType, TranscriptEvent
 from app.models.session import (
     IncidentReport,
@@ -208,6 +210,66 @@ async def identify_session_speakers(session_id: str) -> SessionManifest:
         return await run_session_identification(session_id)
     except SpeakerIdError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
+
+
+# Evenly sample at most this many recorded frames to caption — bounds VLM cost/latency while
+# still spanning the whole session.
+_SCENE_SAMPLE_FRAMES = 6
+
+
+def _sample_indices(total: int, sample: int) -> list[int]:
+    """Evenly spaced frame indices spanning [0, total), at most `sample` of them."""
+    if total <= 0:
+        return []
+    if total <= sample:
+        return list(range(total))
+    step = total / sample
+    return [min(total - 1, int(i * step)) for i in range(sample)]
+
+
+async def run_scene_analysis(session_id: str) -> SessionManifest:
+    """Caption the session's recorded frames with the VLM and store a scene summary.
+
+    Runs post-session (never on the live path) so vision can't block transcription. Samples a
+    handful of frames across the session, captions each with Nebius Qwen2.5-VL, and joins them
+    into a single timestamped scene description on the manifest. A no-op (returns the manifest
+    unchanged) when no Nebius key is configured or the session has no frames.
+    """
+    settings = get_settings()
+    manifest = await _load_manifest(session_id)
+    if not settings.nebius_api_key or not manifest.frame_keys:
+        return manifest
+
+    store = get_object_store()
+    captioner = VlmCaptioner(
+        base_url=settings.nebius_base_url,
+        model=settings.nebius_vlm_model,
+        api_key=settings.nebius_api_key,
+    )
+
+    indices = _sample_indices(len(manifest.frame_keys), _SCENE_SAMPLE_FRAMES)
+    lines: list[str] = []
+    for index in indices:
+        try:
+            jpeg, _ = await store.get(manifest.frame_keys[index])
+        except KeyError:
+            continue
+        caption = await captioner.describe_frame(jpeg)
+        if caption:
+            offset = manifest.frame_offsets[index] if index < len(manifest.frame_offsets) else 0.0
+            lines.append(f"[{offset:.0f}s] {caption}")
+
+    # Re-load before saving so we don't clobber a diarization pass that ran alongside us.
+    fresh = await _load_manifest(session_id)
+    fresh.scene_summary = "\n".join(lines)
+    await _save_manifest(fresh)
+    return fresh
+
+
+@router.post("/{session_id}/scene", response_model=SessionManifest)
+async def analyze_session_scene(session_id: str) -> SessionManifest:
+    """Run (or re-run) the post-session VLM scene analysis and return the updated manifest."""
+    return await run_scene_analysis(session_id)
 
 
 async def generate_session_report(session_id: str) -> ReportResult:

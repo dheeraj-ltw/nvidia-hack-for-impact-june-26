@@ -3,6 +3,10 @@
 Owns one patrol session: receives frames/audio, fans them through the AIService, and
 emits typed PatrolEvents. Frame analysis and reasoning are throttled to a sane cadence so we
 never queue faster than the AI can respond — the realtime loop, not transport, is the budget.
+
+Frame analysis runs *off* the receive loop (schedule_frame), so a slow reasoning call can
+never head-of-line-block audio transcription. Vision (VLM) is not on the live path at all —
+it runs post-session over the recorded frames (see app.api.sessions.run_scene_analysis).
 """
 
 from __future__ import annotations
@@ -45,20 +49,34 @@ class SessionPipeline:
         self._is_analyzing = False
         self._last_analyze_timestamp = 0.0
         self._transcript = ""
+        # Frame analysis (reasoning) runs as a detached task so it never blocks the receive
+        # loop — and thus never delays audio transcription. We keep a handle so the session
+        # can await the in-flight one on shutdown.
+        self._analyze_task: asyncio.Task[None] | None = None
         # When an officer is enrolled, label each transcribed clip officer-vs-subject live by
         # matching the clip's dominant diarized voice against this embedding (see
         # label_dominant_speaker). The post-session pass refines this into consistent
         # officer/person1/person2 numbering. No enrollment => every clip is the officer.
         self._officer_embedding = officer_embedding
 
-    async def handle_frame(self, frame: Frame) -> None:
-        """Throttled, drop-if-busy frame handling — keeps latency bounded under load."""
+    def schedule_frame(self, frame: Frame) -> None:
+        """Throttled, drop-if-busy frame analysis, dispatched off the caller's loop.
+
+        Reasoning can take seconds; running it inline on the WebSocket receive loop would
+        delay reading the next audio clip and stall transcription. So we fire it as a detached
+        task and return immediately. Drop-if-busy keeps at most one analysis in flight, which
+        also bounds how stale the reasoning context can get.
+        """
         timestamp = frame.ts
         too_soon = (timestamp - self._last_analyze_timestamp) < _ANALYZE_INTERVAL_SECONDS
         if self._is_analyzing or too_soon:
             return
         self._is_analyzing = True
         self._last_analyze_timestamp = timestamp
+        self._analyze_task = asyncio.create_task(self._analyze_frame(frame))
+
+    async def _analyze_frame(self, frame: Frame) -> None:
+        timestamp = frame.ts
         try:
             logger.info(
                 "← frame ts=%.2f %dx%d (%d bytes)",
@@ -67,18 +85,17 @@ class SessionPipeline:
                 frame.height,
                 len(frame.jpeg),
             )
+            # Vision runs post-session, not here: detections/scene are empty on the live path.
             boxes, scene_summary = await self._ai_service.analyze_frame(frame)
-            logger.info(
-                "  analyze_frame → %d detection(s), scene=%r", len(boxes), scene_summary or ""
-            )
-            await self._emit(DetectionEvent(ts=timestamp, boxes=boxes, summary=scene_summary))
+            if boxes or scene_summary:
+                await self._emit(DetectionEvent(ts=timestamp, boxes=boxes, summary=scene_summary))
 
             transcript_context = self._transcript[-_TRANSCRIPT_CONTEXT_CHARS:]
-            logger.info(
-                "  reason ← scene=%r transcript=%d chars",
-                scene_summary or "",
-                len(transcript_context),
-            )
+            # Skip the reasoning call entirely until there's dialogue to reason about.
+            if not transcript_context.strip():
+                logger.info("  reason ← (no transcript yet) — skipping")
+                return
+            logger.info("  reason ← transcript=%d chars", len(transcript_context))
             guidance = await self._ai_service.reason(
                 ReasoningInput(
                     ts=timestamp,
@@ -98,8 +115,15 @@ class SessionPipeline:
                 await self._emit_speech(guidance)
             else:
                 logger.info("  reason → no guidance")
+        except Exception as error:  # noqa: BLE001 - detached task; must not crash the session
+            logger.warning("Frame analysis failed: %s", error)
         finally:
             self._is_analyzing = False
+
+    async def aclose(self) -> None:
+        """Await any in-flight frame analysis so it isn't cancelled mid-emit on shutdown."""
+        if self._analyze_task is not None:
+            await asyncio.gather(self._analyze_task, return_exceptions=True)
 
     async def handle_audio(self, audio_chunk: bytes, timestamp: float) -> None:
         logger.info("← audio clip ts=%.2f (%d bytes)", timestamp, len(audio_chunk))

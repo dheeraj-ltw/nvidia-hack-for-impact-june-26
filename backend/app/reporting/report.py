@@ -98,6 +98,7 @@ def build_report(manifest: SessionManifest, *, generated_at: float | None = None
         transcript=transcript,
         guidance=guidance,
         speaker_labels=(manifest.diarization or {}).get("labels", {}),
+        scene_summary=manifest.scene_summary or "",
     )
 
 

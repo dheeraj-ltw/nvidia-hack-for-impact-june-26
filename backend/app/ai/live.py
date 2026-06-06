@@ -2,9 +2,9 @@
 
 - transcribe: ElevenLabs Speech-to-Text (Scribe). Expects a *complete* audio file.
 - speak: ElevenLabs Text-to-Speech, returns mp3 bytes.
-- analyze_frame: Nebius-hosted Qwen2.5-VL captions the frame into a short scene summary.
-  Object detection (bounding boxes) is still pending, so boxes are empty; the summary is what
-  grounds the reasoner. Skipped entirely when NEBIUS_API_KEY is unset.
+- analyze_frame: a no-op on the live path. Vision (VLM scene captioning) runs post-session
+  over the recorded frames so it can never block live transcription — see
+  app.api.sessions.run_scene_analysis. Object detection is still pending.
 - reason: the fine-tuned PoliceAI model via its OpenAI-compatible server (police-llm/),
   prompted with the SCENE CARD format it was trained on.
 
@@ -21,7 +21,6 @@ import httpx
 from app.ai import policeai
 from app.ai.base import Frame, ReasoningInput, Transcription
 from app.ai.speaker_id import extract_words
-from app.ai.vlm import VlmCaptioner
 from app.config import get_settings
 from app.models.events import BoundingBox, GuidanceEvent
 
@@ -42,11 +41,6 @@ class LiveAIService:
         self._stt_model = settings.elevenlabs_stt_model
         self._policeai_base_url = settings.policeai_base_url.rstrip("/")
         self._policeai_model = settings.policeai_model
-        self._vlm = VlmCaptioner(
-            base_url=settings.nebius_base_url,
-            model=settings.nebius_vlm_model,
-            api_key=settings.nebius_api_key,
-        )
 
     async def transcribe(self, audio_chunk: bytes) -> Transcription:
         if not self._elevenlabs_key or len(audio_chunk) < 1024:
@@ -75,10 +69,9 @@ class LiveAIService:
             return Transcription(text="", is_final=False)
 
     async def analyze_frame(self, frame: Frame) -> tuple[list[BoundingBox], str]:
-        # Caption the frame into a scene summary for the reasoner. Object detection
-        # (bounding boxes) is still pending, so no boxes are returned yet.
-        summary = await self._vlm.describe_frame(frame.jpeg)
-        return [], summary
+        # No-op on the live path: vision runs post-session (run_scene_analysis) so it never
+        # blocks transcription. Frames are recorded for that pass as they arrive.
+        return [], ""
 
     async def reason(self, context: ReasoningInput) -> GuidanceEvent | None:
         # Need *some* context to reason about — skip empty turns to save a model call.

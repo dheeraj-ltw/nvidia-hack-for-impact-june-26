@@ -104,6 +104,7 @@ export interface SessionManifest {
   officer_id?: string | null;
   officer_name?: string | null;
   diarization?: Record<string, unknown> | null;
+  scene_summary?: string | null;
 }
 
 export interface GuidanceSummary {
@@ -126,6 +127,7 @@ export interface IncidentReport {
   transcript: string;
   guidance: GuidanceSummary[];
   speaker_labels: Record<string, unknown>;
+  scene_summary: string;
 }
 
 export interface WebhookDispatch {
