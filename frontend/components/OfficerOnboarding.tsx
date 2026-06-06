@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Loader2, Mic, Plus, Square, Trash2, UserRound } from "lucide-react";
-import { Alert } from "@/components/ui/Alert";
+import { AlertDialog } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { createOfficer, deleteOfficer, fetchOfficers } from "@/lib/officers";
 import type { OfficerSummary } from "@/lib/types";
@@ -54,7 +54,7 @@ export function OfficerOnboarding({ onSelect }: OfficerOnboardingProps) {
         </p>
       </div>
 
-      {error && <Alert message={error} onDismiss={() => setError(null)} />}
+      {error && <AlertDialog message={error} onDismiss={() => setError(null)} />}
 
       {adding ? (
         <AddOfficerForm
@@ -201,7 +201,7 @@ function AddOfficerForm({ onCancel, onCreated }: AddOfficerFormProps) {
 
   return (
     <div className="flex flex-col gap-3">
-      {error && <Alert message={error} onDismiss={() => setError(null)} />}
+      {error && <AlertDialog message={error} onDismiss={() => setError(null)} />}
 
       <label className="flex flex-col gap-1 text-xs font-medium text-muted">
         Name

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Download, Pencil, Play, RefreshCw, Trash2 } from "lucide-react";
 import { PlaybackModal } from "@/components/PlaybackModal";
+import { ConfirmDialog, PromptDialog } from "@/components/ui/Modal";
 import { audioUrl, deleteSession, fetchSessions, frameUrl, renameSession } from "@/lib/api";
 import type { SessionSummary } from "@/lib/types";
 
@@ -22,22 +23,26 @@ interface SessionCardProps {
 
 function SessionCard({ session, onPlay, onRenamed, onDeleted }: SessionCardProps) {
   const [busy, setBusy] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const lastFrameIndex = Math.max(0, session.frame_count - 1);
   const title = session.label ?? session.session_id.slice(0, 12);
 
-  const handleRename = useCallback(async () => {
-    const next = window.prompt("Session label", session.label ?? "");
-    if (next === null || next.trim() === "") return;
-    setBusy(true);
-    try {
-      onRenamed(await renameSession(session.session_id, next.trim()));
-    } finally {
-      setBusy(false);
-    }
-  }, [session.session_id, session.label, onRenamed]);
+  const handleRename = useCallback(
+    async (label: string) => {
+      setRenaming(false);
+      setBusy(true);
+      try {
+        onRenamed(await renameSession(session.session_id, label));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [session.session_id, onRenamed],
+  );
 
   const handleDelete = useCallback(async () => {
-    if (!window.confirm(`Delete "${title}"? This cannot be undone.`)) return;
+    setConfirmingDelete(false);
     setBusy(true);
     try {
       await deleteSession(session.session_id);
@@ -45,9 +50,10 @@ function SessionCard({ session, onPlay, onRenamed, onDeleted }: SessionCardProps
     } finally {
       setBusy(false);
     }
-  }, [session.session_id, title, onDeleted]);
+  }, [session.session_id, onDeleted]);
 
   return (
+    <>
     <article className="group flex gap-3 rounded-xl border border-border bg-panel p-3 transition-colors hover:border-border-strong">
       <button
         onClick={onPlay}
@@ -84,7 +90,7 @@ function SessionCard({ session, onPlay, onRenamed, onDeleted }: SessionCardProps
         <div className="flex items-center gap-1">
           <IconAction onClick={onPlay} label="Play" icon={<Play className="h-3.5 w-3.5" />} />
           <IconAction
-            onClick={handleRename}
+            onClick={() => setRenaming(true)}
             disabled={busy}
             label="Rename"
             icon={<Pencil className="h-3.5 w-3.5" />}
@@ -100,7 +106,7 @@ function SessionCard({ session, onPlay, onRenamed, onDeleted }: SessionCardProps
             </a>
           )}
           <IconAction
-            onClick={handleDelete}
+            onClick={() => setConfirmingDelete(true)}
             disabled={busy}
             label="Delete"
             danger
@@ -109,6 +115,30 @@ function SessionCard({ session, onPlay, onRenamed, onDeleted }: SessionCardProps
         </div>
       </div>
     </article>
+
+      {renaming && (
+        <PromptDialog
+          title="Rename session"
+          label="Session label"
+          initialValue={session.label ?? ""}
+          placeholder={session.session_id.slice(0, 12)}
+          maxLength={120}
+          onSubmit={handleRename}
+          onCancel={() => setRenaming(false)}
+        />
+      )}
+
+      {confirmingDelete && (
+        <ConfirmDialog
+          title="Delete session"
+          message={`Delete "${title}"? This cannot be undone.`}
+          confirmLabel="Delete"
+          danger
+          onConfirm={handleDelete}
+          onCancel={() => setConfirmingDelete(false)}
+        />
+      )}
+    </>
   );
 }
 

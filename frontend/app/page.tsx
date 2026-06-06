@@ -7,7 +7,7 @@ import { LogsPanel } from "@/components/LogsPanel";
 import { OfficerOnboarding } from "@/components/OfficerOnboarding";
 import { SessionLibrary } from "@/components/SessionLibrary";
 import { StatusIndicator } from "@/components/StatusIndicator";
-import { Alert } from "@/components/ui/Alert";
+import { AlertDialog } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { usePatrolSession } from "@/lib/usePatrolSession";
 import type { OfficerSummary } from "@/lib/types";
@@ -107,7 +107,7 @@ export default function PatrolConsole() {
         </div>
       </header>
 
-      {state.error && <Alert message={state.error} onDismiss={dismissError} />}
+      {state.error && <AlertDialog message={state.error} onDismiss={dismissError} />}
 
       {/* Before a patrol, gate the feed/logs on choosing who's on patrol so we can identify
           speakers. The recorded-sessions library stays visible regardless. */}
