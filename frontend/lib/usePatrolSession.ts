@@ -187,7 +187,11 @@ export function usePatrolSession() {
     setState((prev) => ({ ...prev, muted: mutedRef.current }));
   }, []);
 
+  const dismissError = useCallback(() => {
+    setState((prev) => ({ ...prev, error: null }));
+  }, []);
+
   useEffect(() => () => stop(), [stop]);
 
-  return { state, videoRef, start, stop, toggleMute };
+  return { state, videoRef, start, stop, toggleMute, dismissError };
 }

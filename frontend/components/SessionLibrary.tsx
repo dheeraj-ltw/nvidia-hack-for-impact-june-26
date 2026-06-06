@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { Download, Pencil, Play, RefreshCw, Trash2 } from "lucide-react";
 import { PlaybackModal } from "@/components/PlaybackModal";
 import { audioUrl, deleteSession, fetchSessions, frameUrl, renameSession } from "@/lib/api";
 import type { SessionSummary } from "@/lib/types";
@@ -47,10 +48,10 @@ function SessionCard({ session, onPlay, onRenamed, onDeleted }: SessionCardProps
   }, [session.session_id, title, onDeleted]);
 
   return (
-    <article className="flex gap-3 rounded-lg border border-border bg-panel p-3">
+    <article className="group flex gap-3 rounded-xl border border-border bg-panel p-3 transition-colors hover:border-border-strong">
       <button
         onClick={onPlay}
-        className="group relative h-16 w-28 shrink-0 overflow-hidden rounded bg-black"
+        className="relative h-16 w-28 shrink-0 overflow-hidden rounded-lg bg-black"
         aria-label="Play session"
       >
         {session.frame_count > 0 && (
@@ -58,55 +59,78 @@ function SessionCard({ session, onPlay, onRenamed, onDeleted }: SessionCardProps
           <img
             src={frameUrl(session.session_id, lastFrameIndex)}
             alt=""
-            className="h-full w-full object-cover opacity-90 transition-opacity group-hover:opacity-60"
+            className="h-full w-full object-cover transition-opacity group-hover:opacity-50"
           />
         )}
-        <span className="absolute inset-0 grid place-items-center text-lg text-fg opacity-0 transition-opacity group-hover:opacity-100">
-          ▶
+        <span className="absolute inset-0 grid place-items-center">
+          <span className="grid h-8 w-8 place-items-center rounded-full bg-black/50 text-white opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100">
+            <Play className="h-4 w-4 translate-x-px fill-current" />
+          </span>
         </span>
       </button>
 
-      <div className="flex min-w-0 flex-1 flex-col justify-between gap-1">
+      <div className="flex min-w-0 flex-1 flex-col justify-between gap-1.5">
         <div className="flex items-center justify-between gap-2">
           <span className="truncate text-sm font-medium">{title}</span>
           <span className="shrink-0 text-xs text-muted">{formatDuration(session)}</span>
         </div>
 
-        <div className="flex items-center gap-2 text-xs text-muted">
+        <div className="flex items-center gap-1.5 text-xs text-muted">
           <span>{session.frame_count} frames</span>
           {session.event_count > 0 && <span>· {session.event_count} log entries</span>}
         </div>
 
-        <div className="flex items-center gap-3 text-xs">
-          <button onClick={onPlay} className="text-accent transition-colors hover:text-fg">
-            Play
-          </button>
-          <button
+        <div className="flex items-center gap-1">
+          <IconAction onClick={onPlay} label="Play" icon={<Play className="h-3.5 w-3.5" />} />
+          <IconAction
             onClick={handleRename}
             disabled={busy}
-            className="text-muted transition-colors hover:text-fg disabled:opacity-50"
-          >
-            Rename
-          </button>
+            label="Rename"
+            icon={<Pencil className="h-3.5 w-3.5" />}
+          />
           {session.has_audio && (
             <a
               href={audioUrl(session.session_id)}
               download
-              className="text-muted transition-colors hover:text-fg"
+              title="Download audio"
+              className="grid h-7 w-7 place-items-center rounded-md text-muted transition-colors hover:bg-panel-hover hover:text-fg"
             >
-              Download audio
+              <Download className="h-3.5 w-3.5" />
             </a>
           )}
-          <button
+          <IconAction
             onClick={handleDelete}
             disabled={busy}
-            className="text-muted transition-colors hover:text-critical disabled:opacity-50"
-          >
-            Delete
-          </button>
+            label="Delete"
+            danger
+            icon={<Trash2 className="h-3.5 w-3.5" />}
+          />
         </div>
       </div>
     </article>
+  );
+}
+
+interface IconActionProps {
+  onClick: () => void;
+  label: string;
+  icon: React.ReactNode;
+  disabled?: boolean;
+  danger?: boolean;
+}
+
+function IconAction({ onClick, label, icon, disabled, danger }: IconActionProps) {
+  const hover = danger ? "hover:text-critical" : "hover:text-fg";
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      title={label}
+      aria-label={label}
+      className={`grid h-7 w-7 place-items-center rounded-md text-muted transition-colors hover:bg-panel-hover disabled:opacity-40 ${hover}`}
+    >
+      {icon}
+    </button>
   );
 }
 
@@ -139,8 +163,9 @@ export function SessionLibrary() {
         </h2>
         <button
           onClick={() => void load()}
-          className="text-xs text-muted transition-colors hover:text-fg"
+          className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted transition-colors hover:bg-panel-hover hover:text-fg"
         >
+          <RefreshCw className="h-3.5 w-3.5" />
           Refresh
         </button>
       </div>

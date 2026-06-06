@@ -1,14 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Loader2, Play, Square, Volume2, VolumeX } from "lucide-react";
 import { FeedView } from "@/components/FeedView";
 import { LogsPanel } from "@/components/LogsPanel";
 import { SessionLibrary } from "@/components/SessionLibrary";
 import { StatusIndicator } from "@/components/StatusIndicator";
+import { Alert } from "@/components/ui/Alert";
+import { Button } from "@/components/ui/Button";
 import { usePatrolSession } from "@/lib/usePatrolSession";
 
 export default function PatrolConsole() {
-  const { state, videoRef, start, stop, toggleMute } = usePatrolSession();
+  const { state, videoRef, start, stop, toggleMute, dismissError } = usePatrolSession();
   const isLive = state.conn === "live";
   const isConnecting = state.conn === "connecting";
 
@@ -19,38 +22,52 @@ export default function PatrolConsole() {
   }, [state.conn]);
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-6xl flex-col gap-5 p-4 md:p-6">
-      <header className="flex items-center justify-between gap-4">
-        <h1 className="text-base font-semibold tracking-tight">Patrol Assist</h1>
+    <main className="mx-auto flex min-h-screen max-w-6xl flex-col gap-6 p-4 md:p-6">
+      <header className="flex items-center justify-between gap-4 border-b border-border pb-4">
         <div className="flex items-center gap-3">
+          <h1 className="text-base font-semibold tracking-tight">Patrol Assist</h1>
           <StatusIndicator conn={state.conn} framesSent={state.framesSent} />
+        </div>
+
+        <div className="flex items-center gap-2">
           {isLive && (
-            <button
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={toggleMute}
               aria-pressed={state.muted}
-              className="rounded-md border border-border px-2.5 py-1.5 text-sm text-muted transition-colors hover:text-fg"
+              icon={
+                state.muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />
+              }
             >
-              {state.muted ? "Audio off" : "Audio on"}
-            </button>
+              {state.muted ? "Muted" : "Audio"}
+            </Button>
           )}
-          <button
-            onClick={isLive || isConnecting ? stop : start}
-            disabled={isConnecting}
-            className="rounded-md border border-border bg-panel px-3.5 py-1.5 text-sm font-medium transition-colors hover:border-accent disabled:opacity-50"
-          >
-            {isLive ? "Stop" : isConnecting ? "Connecting…" : "Start patrol"}
-          </button>
+
+          {isLive || isConnecting ? (
+            <Button
+              variant="danger"
+              onClick={stop}
+              disabled={isConnecting}
+              icon={
+                isConnecting ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Square className="h-3.5 w-3.5 fill-current" />
+                )
+              }
+            >
+              {isConnecting ? "Connecting" : "Stop patrol"}
+            </Button>
+          ) : (
+            <Button variant="primary" onClick={start} icon={<Play className="h-4 w-4 fill-current" />}>
+              Start patrol
+            </Button>
+          )}
         </div>
       </header>
 
-      {state.error && (
-        <div
-          role="alert"
-          className="rounded-md border border-critical bg-critical/10 px-3 py-2 text-sm text-critical"
-        >
-          {state.error}
-        </div>
-      )}
+      {state.error && <Alert message={state.error} onDismiss={dismissError} />}
 
       {/* Live feed on the left, logs (guidance + transcript) on the right. */}
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1.7fr_1fr]">

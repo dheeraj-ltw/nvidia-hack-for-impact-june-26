@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { X } from "lucide-react";
 import { GuidanceCard } from "@/components/GuidanceCard";
 import { fetchSession, videoUrl } from "@/lib/api";
 import type { GuidanceEvent, RecordedEvent, SessionManifest, SessionSummary } from "@/lib/types";
@@ -59,13 +60,13 @@ export function PlaybackModal({ session, onClose }: PlaybackModalProps) {
 
   return (
     <div
-      className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-4"
+      className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-4 backdrop-blur-sm"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
     >
       <div
-        className="flex max-h-[88vh] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-border bg-bg"
+        className="animate-in flex max-h-[88vh] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-border-strong bg-bg shadow-2xl"
         onClick={(event) => event.stopPropagation()}
       >
         <header className="flex items-center justify-between gap-4 border-b border-border px-4 py-3">
@@ -74,9 +75,10 @@ export function PlaybackModal({ session, onClose }: PlaybackModalProps) {
           </h2>
           <button
             onClick={onClose}
-            className="rounded-md border border-border px-2.5 py-1 text-sm text-muted transition-colors hover:text-fg"
+            aria-label="Close"
+            className="grid h-7 w-7 place-items-center rounded-md text-muted transition-colors hover:bg-panel-hover hover:text-fg"
           >
-            Close
+            <X className="h-4 w-4" />
           </button>
         </header>
 
