@@ -1,0 +1,61 @@
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'Helvetica, Arial, sans-serif','fontSize':'14px','primaryColor':'#f5f7f1','primaryTextColor':'#1c212e','primaryBorderColor':'#76b900','lineColor':'#6b7280','clusterBkg':'#ffffff','clusterBorder':'#cfd6cf'}}}%%
+flowchart TB
+    subgraph FIELD["Field Device — Officer"]
+        CAM["Camera + Microphone<br/>(bodycam / phone)"]
+        DISPLAY["Patrol Console<br/>live feed · recording · sessions"]
+        TTS_OUT["Spoken guidance<br/>(when AI connected)"]
+    end
+
+    subgraph EDGE["Next.js Frontend"]
+        CAPTURE["Capture loop<br/>frames ~2 fps + audio (MediaRecorder)"]
+        UI["Reactive UI<br/>feed · transcript · guidance · sessions"]
+    end
+
+    subgraph GATEWAY["FastAPI Gateway"]
+        WS["WebSocket session<br/>binary ingest / JSON events"]
+        RECORDER["Session recorder<br/>frames + audio + manifest"]
+        ORCH["Orchestrator<br/>throttled, drop-if-busy"]
+        AISVC{{"AIService interface<br/>stub · live"}}
+        SESSIONS["Sessions API<br/>list · detail · playback"]
+    end
+
+    subgraph AI["AI Services — optional, pluggable"]
+        STT["Speech-to-Text<br/>(ElevenLabs)"]
+        VLM["Vision-Language Model<br/>(NIM) — scene + objects"]
+        REASON["Reasoner<br/>(Nemotron) + Legal RAG"]
+        TTS["Text-to-Speech<br/>(ElevenLabs)"]
+    end
+
+    subgraph DATA["Object Storage — MinIO / S3"]
+        STORE[("sessions/&lt;id&gt;/<br/>frames · audio · manifest")]
+    end
+
+    CAM --> CAPTURE
+    CAPTURE -->|"frames + audio"| WS
+    WS --> RECORDER
+    RECORDER --> STORE
+    WS --> ORCH
+    ORCH <--> AISVC
+    AISVC -.->|"AI_BACKEND=live"| STT
+    AISVC -.-> VLM
+    AISVC -.-> REASON
+    AISVC -.-> TTS
+    VLM -.-> REASON
+    STT -.-> REASON
+
+    ORCH -->|"detections · transcript · guidance · speech"| WS
+    WS -->|"events"| UI
+    UI --> DISPLAY
+    UI --> TTS_OUT
+
+    SESSIONS --> STORE
+    UI -->|"browse + playback"| SESSIONS
+
+    classDef field fill:#eaf1ff,stroke:#2563eb,color:#1c212e;
+    classDef ai fill:#eef7e0,stroke:#76b900,color:#1c212e;
+    classDef gw fill:#f5f7f1,stroke:#76b900,color:#1c212e;
+    classDef data fill:#fff6e6,stroke:#f59e0b,color:#1c212e;
+    class CAM,DISPLAY,TTS_OUT field;
+    class STT,VLM,REASON,TTS ai;
+    class WS,RECORDER,ORCH,AISVC,SESSIONS,CAPTURE,UI gw;
+    class STORE data;
