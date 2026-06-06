@@ -17,7 +17,10 @@ FROM ${CUDA_IMAGE}
 
 ARG CUDA_ARCH=121
 # Override to "" for a CPU-only build.
-ARG LLAMA_CMAKE_ARGS="-DGGML_CUDA=on -DCMAKE_CUDA_ARCHITECTURES=${CUDA_ARCH}"
+# GGML_CUDA_NO_VMM=on  — skip linking libcuda.so (VMM driver API); fixes Docker
+#   build linker errors (cuMemCreate etc.) when no host driver is present.
+# LLAMA_BUILD_*=OFF    — we only need the Python bindings, not mtmd/cli tools.
+ARG LLAMA_CMAKE_ARGS="-DGGML_CUDA=on -DCMAKE_CUDA_ARCHITECTURES=${CUDA_ARCH} -DGGML_CUDA_NO_VMM=on -DLLAMA_BUILD_TOOLS=OFF -DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_BUILD_TESTS=OFF"
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PIP_NO_CACHE_DIR=1

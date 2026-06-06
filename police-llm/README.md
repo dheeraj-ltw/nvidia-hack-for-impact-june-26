@@ -148,10 +148,16 @@ Use the service name as the host: `http://police-llm:8000/v1`.
 ### Docker build: `libcuda.so.1 not found` / `undefined reference to cuMemCreate`
 
 The NVIDIA **driver** is not present during `docker build` (only at runtime with
-`--gpus all`). The Dockerfile links against CUDA **stub** libraries in the devel
-image and symlinks `libcuda.so.1` → `libcuda.so`. If you still hit linker errors,
-confirm you are using the `nvidia/cuda:*-devel` base image (not `runtime`) and
-rebuild:
+`--gpus all`). The Dockerfile works around this by:
+
+1. Setting `GGML_CUDA_NO_VMM=on` so ggml-cuda does not link `libcuda.so` (VMM
+   driver APIs like `cuMemCreate`).
+2. Disabling llama.cpp CLI/tool targets (`LLAMA_BUILD_TOOLS=OFF`) — only the
+   Python bindings are needed.
+3. Symlinking CUDA driver **stubs** (`libcuda.so.1` → `libcuda.so`) as a fallback.
+
+If you still hit linker errors, confirm you are using the `nvidia/cuda:*-devel`
+base image (not `runtime`) and rebuild:
 
 ```bash
 docker compose build --no-cache
