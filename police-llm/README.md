@@ -143,6 +143,23 @@ for chunk in stream:
 
 Use the service name as the host: `http://police-llm:8000/v1`.
 
+## Troubleshooting
+
+### Docker build: `libcuda.so.1 not found` / `undefined reference to cuMemCreate`
+
+The NVIDIA **driver** is not present during `docker build` (only at runtime with
+`--gpus all`). The Dockerfile links against CUDA **stub** libraries in the devel
+image and symlinks `libcuda.so.1` → `libcuda.so`. If you still hit linker errors,
+confirm you are using the `nvidia/cuda:*-devel` base image (not `runtime`) and
+rebuild:
+
+```bash
+docker compose build --no-cache
+```
+
+At **runtime**, the container must have GPU access (`deploy.resources.reservations
+.devices` in compose, or `docker run --gpus all`).
+
 ## Notes & limitations
 
 - **Concurrency:** `llama.cpp` uses a single context that is not re-entrant, so

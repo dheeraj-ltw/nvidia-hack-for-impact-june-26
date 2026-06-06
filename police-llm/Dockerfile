@@ -35,11 +35,41 @@ RUN pip install --upgrade pip setuptools wheel
 
 WORKDIR /app
 
+# ---------------------------------------------------------------------------
+# CUDA driver stubs — required to LINK ggml-cuda at Docker *build* time.
+#
+# The host NVIDIA driver (libcuda.so.1) is only injected at container *runtime*
+# via the NVIDIA Container Toolkit. During `docker build` there is no driver,
+# so the linker fails with undefined cuMemCreate / cuDeviceGet / etc.
+#
+# NVIDIA ships a stub libcuda in the CUDA toolkit; ggml-cuda looks for
+# libcuda.so.1 specifically, so we symlink libcuda.so -> libcuda.so.1.
+# On aarch64 (DGX Spark) stubs may live under targets/sbsa-linux/lib/stubs.
+# ---------------------------------------------------------------------------
+RUN CUDA_STUBS="" \
+    && for d in /usr/local/cuda/lib64/stubs /usr/local/cuda/targets/sbsa-linux/lib/stubs; do \
+         if [ -f "$d/libcuda.so" ]; then CUDA_STUBS="$d"; break; fi; \
+       done \
+    && if [ -z "$CUDA_STUBS" ]; then \
+         echo "ERROR: libcuda.so stub not found under /usr/local/cuda"; \
+         find /usr/local/cuda -name 'libcuda.so' 2>/dev/null || true; \
+         exit 1; \
+       fi \
+    && ln -sf "$CUDA_STUBS/libcuda.so" "$CUDA_STUBS/libcuda.so.1" \
+    && echo "Using CUDA stubs: $CUDA_STUBS"
+
+ENV LIBRARY_PATH=/usr/local/cuda/lib64/stubs:/usr/local/cuda/targets/sbsa-linux/lib/stubs:${LIBRARY_PATH}
+
 # Compile llama-cpp-python against CUDA for the target arch.
 ENV CMAKE_ARGS="${LLAMA_CMAKE_ARGS}" \
     FORCE_CMAKE=1
 COPY requirements.txt .
-RUN pip install -r requirements.txt
+RUN if [ -n "${LLAMA_CMAKE_ARGS}" ]; then \
+      echo "Building llama-cpp-python with CMAKE_ARGS=${CMAKE_ARGS}"; \
+    else \
+      echo "Building llama-cpp-python (CPU-only, no CMAKE_ARGS)"; \
+    fi \
+    && pip install -r requirements.txt
 
 COPY app ./app
 
