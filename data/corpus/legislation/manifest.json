@@ -1,0 +1,65 @@
+[
+  {
+    "slug": "pace_1984",
+    "title": "Police and Criminal Evidence Act 1984",
+    "url": "https://www.legislation.gov.uk/ukpga/1984/60/data.xml",
+    "file": "pace_1984.xml",
+    "licence": "Open Government Licence v3.0 (Crown copyright), via legislation.gov.uk"
+  },
+  {
+    "slug": "misuse_drugs_1971",
+    "title": "Misuse of Drugs Act 1971",
+    "url": "https://www.legislation.gov.uk/ukpga/1971/38/data.xml",
+    "file": "misuse_drugs_1971.xml",
+    "licence": "Open Government Licence v3.0 (Crown copyright), via legislation.gov.uk"
+  },
+  {
+    "slug": "cjpoa_1994",
+    "title": "Criminal Justice and Public Order Act 1994",
+    "url": "https://www.legislation.gov.uk/ukpga/1994/33/data.xml",
+    "file": "cjpoa_1994.xml",
+    "licence": "Open Government Licence v3.0 (Crown copyright), via legislation.gov.uk"
+  },
+  {
+    "slug": "road_traffic_1988",
+    "title": "Road Traffic Act 1988",
+    "url": "https://www.legislation.gov.uk/ukpga/1988/52/data.xml",
+    "file": "road_traffic_1988.xml",
+    "licence": "Open Government Licence v3.0 (Crown copyright), via legislation.gov.uk"
+  },
+  {
+    "slug": "criminal_law_1967",
+    "title": "Criminal Law Act 1967",
+    "url": "https://www.legislation.gov.uk/ukpga/1967/58/data.xml",
+    "file": "criminal_law_1967.xml",
+    "licence": "Open Government Licence v3.0 (Crown copyright), via legislation.gov.uk"
+  },
+  {
+    "slug": "public_order_1986",
+    "title": "Public Order Act 1986",
+    "url": "https://www.legislation.gov.uk/ukpga/1986/64/data.xml",
+    "file": "public_order_1986.xml",
+    "licence": "Open Government Licence v3.0 (Crown copyright), via legislation.gov.uk"
+  },
+  {
+    "slug": "human_rights_1998",
+    "title": "Human Rights Act 1998",
+    "url": "https://www.legislation.gov.uk/ukpga/1998/42/data.xml",
+    "file": "human_rights_1998.xml",
+    "licence": "Open Government Licence v3.0 (Crown copyright), via legislation.gov.uk"
+  },
+  {
+    "slug": "terrorism_2000",
+    "title": "Terrorism Act 2000",
+    "url": "https://www.legislation.gov.uk/ukpga/2000/11/data.xml",
+    "file": "terrorism_2000.xml",
+    "licence": "Open Government Licence v3.0 (Crown copyright), via legislation.gov.uk"
+  },
+  {
+    "slug": "mental_health_1983",
+    "title": "Mental Health Act 1983",
+    "url": "https://www.legislation.gov.uk/ukpga/1983/20/data.xml",
+    "file": "mental_health_1983.xml",
+    "licence": "Open Government Licence v3.0 (Crown copyright), via legislation.gov.uk"
+  }
+]
