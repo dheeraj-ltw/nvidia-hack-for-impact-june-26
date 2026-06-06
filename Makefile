@@ -21,7 +21,12 @@ REF    ?= data/audio/officer_ref.mp3
 SNR    ?= 15
 OTHERS ?= 3
 
-.PHONY: all data setup scrape corpus generate smoke validate split tts stt identify demo-audio clean distclean help
+# Video-to-text (Nebius Qwen2.5-VL) knobs.
+VIDEO  ?= data/video/sample.mp4
+FRAMES ?= 8
+FPS    ?= 1
+
+.PHONY: all data setup scrape corpus generate smoke validate split tts stt identify demo-audio video2text clean distclean help
 
 help:
 	@echo "Targets:"
@@ -37,6 +42,7 @@ help:
 	@echo "  stt       speech -> text via ElevenLabs (AUDIO=...)"
 	@echo "  demo-audio build a noisy multi-speaker demo (SNR=... OTHERS=1..3)"
 	@echo "  identify  label officer vs person1/2/... in a conversation (CONV=... REF=...)"
+	@echo "  video2text describe a video via Nebius Qwen2.5-VL (VIDEO=... FRAMES=... FPS=...)"
 	@echo "  clean     remove generated data (keeps cached scrapes + venv)"
 	@echo "  distclean remove venv, caches and all generated data"
 
@@ -78,6 +84,9 @@ demo-audio:
 
 identify:
 	$(PY) src/speaker_id.py identify --conversation "$(CONV)" --officer "$(REF)"
+
+video2text:
+	$(PY) src/video_to_text.py "$(VIDEO)" --max-frames $(FRAMES) --fps $(FPS)
 
 # Full end-to-end run.
 data: scrape corpus generate validate split
