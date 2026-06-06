@@ -59,30 +59,57 @@ class SessionPipeline:
         self._is_analyzing = True
         self._last_analyze_timestamp = timestamp
         try:
+            logger.info(
+                "← frame ts=%.2f %dx%d (%d bytes)",
+                timestamp,
+                frame.width,
+                frame.height,
+                len(frame.jpeg),
+            )
             boxes, scene_summary = await self._ai_service.analyze_frame(frame)
+            logger.info(
+                "  analyze_frame → %d detection(s), scene=%r", len(boxes), scene_summary or ""
+            )
             await self._emit(DetectionEvent(ts=timestamp, boxes=boxes, summary=scene_summary))
 
+            transcript_context = self._transcript[-_TRANSCRIPT_CONTEXT_CHARS:]
+            logger.info(
+                "  reason ← scene=%r transcript=%d chars",
+                scene_summary or "",
+                len(transcript_context),
+            )
             guidance = await self._ai_service.reason(
                 ReasoningInput(
                     ts=timestamp,
-                    transcript=self._transcript[-_TRANSCRIPT_CONTEXT_CHARS:],
+                    transcript=transcript_context,
                     scene_summary=scene_summary,
                     detections=boxes,
                 )
             )
             if guidance is not None:
+                logger.info(
+                    "  reason → guidance [%s] %r (%d citation(s))",
+                    guidance.severity.value,
+                    guidance.suggestion,
+                    len(guidance.citations),
+                )
                 await self._emit(guidance)
                 await self._emit_speech(guidance)
+            else:
+                logger.info("  reason → no guidance")
         finally:
             self._is_analyzing = False
 
     async def handle_audio(self, audio_chunk: bytes, timestamp: float) -> None:
+        logger.info("← audio clip ts=%.2f (%d bytes)", timestamp, len(audio_chunk))
         text, is_final = await self._ai_service.transcribe(audio_chunk)
         if not text:
+            logger.info("  transcribe → (nothing recognized)")
             return
         if is_final:
             self._transcript += " " + text
         speaker = await self._label_speaker(audio_chunk)
+        logger.info("  transcribe → [%s] %r (final=%s)", speaker, text, is_final)
         await self._emit(
             TranscriptEvent(ts=timestamp, text=text, speaker=speaker, is_final=is_final)
         )
@@ -100,6 +127,7 @@ class SessionPipeline:
 
     async def _emit_speech(self, guidance: GuidanceEvent) -> None:
         audio_bytes = await self._ai_service.speak(guidance.suggestion)
+        logger.info("  speak → %d bytes of mp3 audio", len(audio_bytes))
         await self._emit(
             SpeechEvent(
                 ts=guidance.ts,

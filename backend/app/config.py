@@ -16,10 +16,23 @@ class Settings(BaseSettings):
     # AI provider selection: stub (deterministic), live (NIM + ElevenLabs)
     ai_backend: Literal["stub", "live"] = "stub"
 
-    # NVIDIA NIM
+    # NVIDIA NIM (vision model lands in a separate PR; kept for that integration)
     nvidia_api_key: str = ""
     nvidia_base_url: str = "https://integrate.api.nvidia.com/v1"
     nemotron_model: str = "nvidia/llama-3.1-nemotron-70b-instruct"
+
+    # Fine-tuned PoliceAI reasoner — an OpenAI-compatible server (see police-llm/).
+    # The model was trained on SCENE CARD prompts; reason() rebuilds that exact format.
+    # The server runs unauthenticated, so no API key is sent.
+    policeai_base_url: str = "http://police-llm:8000/v1"
+    policeai_model: str = "policeai"
+
+    # Incident reporting — webhooks fired with the report when a session ends.
+    # Each is optional; an unset URL is simply skipped. All dispatch is best-effort.
+    logs_webhook_url: str = ""
+    report_webhook_url: str = ""
+    cop_registry_webhook_url: str = ""
+    webhook_timeout_seconds: float = 10.0
 
     # ElevenLabs — speech-to-text + text-to-speech
     elevenlabs_api_key: str = ""

@@ -1,9 +1,11 @@
-"""Live AI backend — ElevenLabs speech, optional NVIDIA Nemotron reasoning.
+"""Live AI backend — ElevenLabs speech, fine-tuned PoliceAI reasoning.
 
 - transcribe: ElevenLabs Speech-to-Text (Scribe). Expects a *complete* audio file.
 - speak: ElevenLabs Text-to-Speech, returns mp3 bytes.
-- analyze_frame: no vision model is wired yet, so this returns no detections.
-- reason: NVIDIA Nemotron when an API key is configured; otherwise no guidance.
+- analyze_frame: no vision model is wired yet (lands in a separate PR), so this returns
+  no detections.
+- reason: the fine-tuned PoliceAI model via its OpenAI-compatible server (police-llm/),
+  prompted with the SCENE CARD format it was trained on.
 
 Network calls are defensive: any provider error degrades to an empty result rather than
 crashing the realtime session.
@@ -15,25 +17,19 @@ import logging
 
 import httpx
 
+from app.ai import policeai
 from app.ai.base import Frame, ReasoningInput
 from app.config import get_settings
-from app.models.events import BoundingBox, GuidanceEvent, LegalCitation, Severity
+from app.models.events import BoundingBox, GuidanceEvent
 
 logger = logging.getLogger(__name__)
 
 _ELEVENLABS_BASE = "https://api.elevenlabs.io/v1"
 _REQUEST_TIMEOUT = httpx.Timeout(30.0, connect=10.0)
 
-_REASONING_SYSTEM_PROMPT = (
-    "You are a law-aligned decision-support assistant for a police officer on patrol. "
-    "Given the scene and recent dialogue, give one short, actionable, lawful suggestion "
-    "and cite the legal basis. You advise; the officer decides. If nothing warrants "
-    "guidance, reply with exactly: NONE."
-)
-
 
 class LiveAIService:
-    """Implements the AIService protocol against ElevenLabs and (optionally) NVIDIA NIM."""
+    """Implements the AIService protocol against ElevenLabs + the fine-tuned PoliceAI model."""
 
     def __init__(self) -> None:
         settings = get_settings()
@@ -41,13 +37,13 @@ class LiveAIService:
         self._voice_id = settings.elevenlabs_voice_id
         self._tts_model = settings.elevenlabs_tts_model
         self._stt_model = settings.elevenlabs_stt_model
-        self._nvidia_key = settings.nvidia_api_key
-        self._nvidia_base_url = settings.nvidia_base_url
-        self._nemotron_model = settings.nemotron_model
+        self._policeai_base_url = settings.policeai_base_url.rstrip("/")
+        self._policeai_model = settings.policeai_model
 
     async def transcribe(self, audio_chunk: bytes) -> tuple[str, bool]:
         if not self._elevenlabs_key or len(audio_chunk) < 1024:
             return "", False
+        logger.info("→ ElevenLabs STT model=%s (%d bytes)", self._stt_model, len(audio_chunk))
         try:
             async with httpx.AsyncClient(timeout=_REQUEST_TIMEOUT) as client:
                 response = await client.post(
@@ -68,46 +64,44 @@ class LiveAIService:
         return [], ""
 
     async def reason(self, context: ReasoningInput) -> GuidanceEvent | None:
-        if not self._nvidia_key:
+        # Need *some* context to reason about — skip empty turns to save a model call.
+        if not context.transcript.strip() and not context.scene_summary.strip():
             return None
-        prompt = (
-            f"Scene: {context.scene_summary or 'n/a'}\n"
-            f"Recent dialogue: {context.transcript or 'n/a'}\n"
-            "Provide guidance."
+
+        headers = {"Content-Type": "application/json"}
+
+        logger.info(
+            "→ PoliceAI %s/chat/completions model=%s",
+            self._policeai_base_url,
+            self._policeai_model,
         )
         try:
             async with httpx.AsyncClient(timeout=_REQUEST_TIMEOUT) as client:
                 response = await client.post(
-                    f"{self._nvidia_base_url}/chat/completions",
-                    headers={"Authorization": f"Bearer {self._nvidia_key}"},
+                    f"{self._policeai_base_url}/chat/completions",
+                    headers=headers,
                     json={
-                        "model": self._nemotron_model,
-                        "messages": [
-                            {"role": "system", "content": _REASONING_SYSTEM_PROMPT},
-                            {"role": "user", "content": prompt},
-                        ],
+                        "model": self._policeai_model,
+                        "messages": policeai.build_messages(context),
                         "temperature": 0.2,
-                        "max_tokens": 200,
+                        "max_tokens": 700,
                     },
                 )
             response.raise_for_status()
-            suggestion = response.json()["choices"][0]["message"]["content"].strip()
-        except (httpx.HTTPError, KeyError, IndexError, ValueError) as error:
-            logger.warning("Nemotron reasoning failed: %s", error)
+            # TypeError guards against an unexpected response shape (e.g. choices is not a
+            # list, or message is not a dict) — degrade to no guidance, never crash the session.
+            content = response.json()["choices"][0]["message"]["content"]
+        except (httpx.HTTPError, KeyError, IndexError, TypeError, ValueError) as error:
+            logger.warning("PoliceAI reasoning failed: %s", error)
             return None
 
-        if not suggestion or suggestion.upper() == "NONE":
-            return None
-        return GuidanceEvent(
-            ts=context.ts,
-            suggestion=suggestion,
-            severity=Severity.INFO,
-            citations=[LegalCitation(title="Model-cited basis", reference="see suggestion")],
-        )
+        logger.info("← PoliceAI returned %d chars", len(content))
+        return policeai.parse_guidance(content, context.ts)
 
     async def speak(self, text: str) -> bytes:
         if not self._elevenlabs_key or not self._voice_id or not text:
             return b""
+        logger.info("→ ElevenLabs TTS model=%s (%d chars)", self._tts_model, len(text))
         try:
             async with httpx.AsyncClient(timeout=_REQUEST_TIMEOUT) as client:
                 response = await client.post(

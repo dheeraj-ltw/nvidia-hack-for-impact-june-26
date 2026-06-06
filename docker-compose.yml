@@ -28,7 +28,26 @@ services:
         condition: service_healthy
     volumes:
       - ./backend:/app
+      # Drop a corporate/proxy root CA (PEM) into ./certs to have it trusted at startup
+      # (e.g. behind Zscaler TLS interception). Empty by default — nothing to trust.
+      - ./certs:/usr/local/share/ca-certificates/extra:ro
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  # Fine-tuned PoliceAI reasoner (OpenAI-compatible). Optional: needs a GGUF model file
+  # mounted at MODEL_PATH. Start it explicitly with `--profile reasoner` once a model is in
+  # ./models, then set AI_BACKEND=live and POLICEAI_BASE_URL=http://police-llm:8000/v1.
+  police-llm:
+    build: ./police-llm
+    profiles: ["reasoner"]
+    environment:
+      MODEL_PATH: /models/model.gguf
+      MODEL_NAME: ${POLICEAI_MODEL:-policeai}
+      # CPU-only by default so it runs anywhere; set N_GPU_LAYERS=-1 to offload to a GPU.
+      N_GPU_LAYERS: ${POLICEAI_N_GPU_LAYERS:-0}
+    volumes:
+      - ./models:/models:ro
+    ports:
+      - "${POLICEAI_PORT:-8001}:8000"
 
   web:
     build: ./frontend

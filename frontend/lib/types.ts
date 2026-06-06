@@ -79,6 +79,7 @@ export interface SessionSummary {
   frame_count: number;
   has_audio: boolean;
   has_video: boolean;
+  has_report: boolean;
   event_count: number;
   officer_name?: string | null;
 }
@@ -99,9 +100,45 @@ export interface SessionManifest {
   audio_key: string | null;
   video_key: string | null;
   events: RecordedEvent[];
+  report_key: string | null;
   officer_id?: string | null;
   officer_name?: string | null;
   diarization?: Record<string, unknown> | null;
+}
+
+export interface GuidanceSummary {
+  offset_seconds: number;
+  suggestion: string;
+  severity: string;
+  citations: string[];
+}
+
+export interface IncidentReport {
+  session_id: string;
+  label: string | null;
+  officer_id?: string | null;
+  officer_name?: string | null;
+  started_at: number;
+  ended_at: number | null;
+  duration_seconds: number;
+  generated_at: number;
+  frame_count: number;
+  transcript: string;
+  guidance: GuidanceSummary[];
+  speaker_labels: Record<string, unknown>;
+}
+
+export interface WebhookDispatch {
+  target: string;
+  url: string;
+  delivered: boolean;
+  status_code?: number | null;
+  error?: string | null;
+}
+
+export interface ReportResult {
+  report: IncidentReport;
+  dispatches: WebhookDispatch[];
 }
 
 export type PatrolEvent =
