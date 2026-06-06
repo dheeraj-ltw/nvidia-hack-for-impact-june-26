@@ -1,0 +1,33 @@
+services:
+  police-llm:
+    build:
+      context: .
+      args:
+        CUDA_ARCH: "${CUDA_ARCH:-121}"
+    image: police-llm:latest
+    env_file: .env
+    ports:
+      - "${LLM_PORT:-8001}:${PORT:-8000}"
+    volumes:
+      - ./models:/models:ro
+    environment:
+      MODEL_PATH: ${MODEL_PATH:-/models/policeai-super-49b-Q4_K_M.gguf}
+      MODEL_NAME: ${MODEL_NAME:-policeai-super-49b}
+      N_GPU_LAYERS: ${N_GPU_LAYERS:--1}
+      N_CTX: ${N_CTX:-8192}
+      N_BATCH: ${N_BATCH:-512}
+      N_THREADS: ${N_THREADS:-0}
+      CHAT_FORMAT: ${CHAT_FORMAT:-}
+      LLAMA_VERBOSE: ${LLAMA_VERBOSE:-false}
+      HOST: ${HOST:-0.0.0.0}
+      PORT: ${PORT:-8000}
+      API_KEY: ${API_KEY:-}
+      DEFAULT_SYSTEM_PROMPT: ${DEFAULT_SYSTEM_PROMPT:-}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped

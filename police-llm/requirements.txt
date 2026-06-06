@@ -1,0 +1,9 @@
+# police-llm OpenAI-compatible inference server
+#
+# NOTE: llama-cpp-python is built from source inside the Dockerfile with CUDA
+# enabled (CMAKE_ARGS) so it targets the GB10 / Blackwell GPU (sm_121). The
+# version floor below has the chat-template + server features this app relies on.
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+llama-cpp-python>=0.3.2
+pydantic>=2.7.0
