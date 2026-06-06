@@ -1,9 +1,40 @@
+# Python
 .venv/
 __pycache__/
+*.py[cod]
 *.pyc
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# Node
+node_modules/
+.next/
+out/
+
+# Env & secrets
 .env
+.env.local
+*.local
+
+# Dataset builder corpus (large scraped sources; keep structure + derived index files)
 data/corpus/legislation/*.xml
 data/corpus/caselaw/*.xml
 data/corpus/police_guidance/*.html
-# keep the directory structure and the small derived/index files
 !data/corpus/**/.gitkeep
+
+# App object storage (MinIO volume)
+minio_data/
+
+# OS / editor
+.DS_Store
+*.log
+
+# Claude memory index (local only)
+MEMORY.md
+
+# Claude Code personal settings (per-developer)
+.claude/settings.local.json
+
+# TS build cache
+*.tsbuildinfo
