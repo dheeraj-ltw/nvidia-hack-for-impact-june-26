@@ -1,25 +1,46 @@
 # QLoRA fine-tuning dependencies for lora-train.py
-# Target hardware: NVIDIA DGX Spark (GB10 Grace Blackwell, CUDA 12.x)
+# Target hardware: NVIDIA DGX Spark (GB10 Grace Blackwell, sm_121, aarch64, CUDA 13.0)
 #
-# Install PyTorch separately first, matched to your CUDA build, e.g.:
-#   pip install torch --index-url https://download.pytorch.org/whl/cu124
-# then:
-#   pip install -r requirements.txt
+# ---------------------------------------------------------------------------
+# Install order matters on DGX Spark. Do this:
+#
+#   1. Install PyTorch FIRST from the CUDA 13.0 index. GB10 is sm_121 and is
+#      only supported by torch >= 2.9 built against CUDA 13. The cu124 build
+#      will crash with:
+#          AttributeError: module 'torch' has no attribute 'float8_e8m0fnu'
+#
+#        pip install torch --index-url https://download.pytorch.org/whl/cu130
+#
+#      (A UserWarning about "GPU capability 12.1 ... max supported 12.0" is
+#       expected on torch < 2.11 and is safe to ignore.)
+#
+#   2. Install the rest of the stack (pinned for Nemotron compatibility):
+#        pip install -r requirements.txt
+#
+# NOTE 1: flash-attn is intentionally NOT included. There is no working sm_121
+#         (GB10) wheel, and the build fails on aarch64/CUDA 13. The script uses
+#         attn_implementation="sdpa", which is faster on Blackwell anyway.
+#
+# NOTE 2: transformers is PINNED to 4.48.3. The nvidia/Llama-3_3-Nemotron-
+#         Super-49B custom (DeciLM) remote code imports
+#         NEED_SETUP_CACHE_CLASSES_MAPPING, which was removed in
+#         transformers >= ~4.50. 4.48.3 is NVIDIA's documented recommendation.
+#         trl/peft below are pinned to versions compatible with 4.48.3.
+# ---------------------------------------------------------------------------
 
-# Core training stack
-torch>=2.4.0
-transformers>=4.45.0
-trl>=0.11.0
-peft>=0.13.0
-datasets>=2.20.0
+# torch is installed separately in step 1 (cu130). Pinned here as a floor only.
+torch>=2.9.0
+
+# Core training stack — pinned for nvidia Nemotron-Super-49B remote code.
+transformers==4.48.3
+trl==0.13.0
+peft==0.14.0
+datasets>=2.20.0,<4.0.0
 accelerate>=0.34.0
 
-# 4-bit (NF4) quantisation + paged_adamw_8bit optimiser
-bitsandbytes>=0.43.0
+# 4-bit (FP4/NF4) quantisation + paged_adamw_8bit optimiser.
+# 0.49+ is required for working sm_121 (GB10) FP4/NF4 support.
+bitsandbytes>=0.49.0
 
 # Safe serialization of merged model weights
 safetensors>=0.4.3
-
-# Optional: FlashAttention-2 (attn_implementation="flash_attention_2").
-# Requires a CUDA toolkit + nvcc at build time; comment out if unavailable.
-flash-attn>=2.6.0

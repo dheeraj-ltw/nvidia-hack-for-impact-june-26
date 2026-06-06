@@ -23,10 +23,30 @@ Model:   nvidia/Llama-3_3-Nemotron-Super-49B-v1_5
              "detailed thinking on" (see SYSTEM_PROMPT below).
 
 Hardware: NVIDIA DGX Spark (GB10 Grace Blackwell, 128 GB unified memory)
-Method:   QLoRA — NF4 4-bit quantised base + BF16 LoRA adapters (r=16)
+Method:   QLoRA — FP4 4-bit quantised base + BF16 LoRA adapters (r=16)
+          FP4 is used (instead of NF4) because GB10 Blackwell has native
+          FP4 tensor cores (5th-gen), so it is the hardware-aligned 4-bit
+          format on DGX Spark. Override with --quant_type nf4 if desired.
+
+Environment (DGX Spark specifics — IMPORTANT):
+  - GB10 is compute capability sm_121 and requires CUDA 13.0 + PyTorch >= 2.9.
+    Install the aarch64 cu130 wheel, NOT the cu124 build:
+        pip install torch --index-url https://download.pytorch.org/whl/cu130
+    (An older torch raises:
+       AttributeError: module 'torch' has no attribute 'float8_e8m0fnu'
+     when transformers imports its FP8 integration.)
+  - The DeciLM custom code only implements "flash_attention_2" and "eager"
+    (NO SDPA path). flash-attn has no working sm_121 (GB10) wheel, so we fall
+    back to attn_implementation="eager". Do NOT use "sdpa" or "flash_attention_2".
+  - The custom DeciLM remote code for this model is written against the
+    transformers 4.44-4.48 API and imports NEED_SETUP_CACHE_CLASSES_MAPPING,
+    which was REMOVED in transformers >= ~4.50. You MUST pin transformers
+    to 4.48.3 (NVIDIA's documented recommendation), otherwise loading fails:
+       ImportError: cannot import name 'NEED_SETUP_CACHE_CLASSES_MAPPING'
+                    from 'transformers.generation.utils'
 
 Estimated memory during training
-  Base weights (NF4):        ~25 GB
+  Base weights (FP4):        ~25 GB
   LoRA adapter params:        ~0.3 GB
   Optimizer states (paged):   ~1 GB
   Activations (grad ckpt):   ~12 GB
@@ -83,6 +103,10 @@ SYSTEM_PROMPT = (
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="QLoRA fine-tune Nemotron-Super-49B for PoliceAI")
     p.add_argument("--model_id", default=MODEL_ID)
+    p.add_argument("--revision", default="main",
+                   help="Pin the HF model revision (commit hash/tag). Pinning a "
+                        "commit stops the custom DeciLM remote code from silently "
+                        "re-downloading on each run.")
     p.add_argument("--data_path", default="../../models/rag/training_data/legal_qa.jsonl")
     p.add_argument("--output_dir", default="./checkpoints/nemotron-super-49b-policeai-v1")
     p.add_argument("--hf_token", default=os.getenv("HF_TOKEN", ""))
@@ -93,6 +117,9 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--lora_r", type=int, default=16)
     p.add_argument("--lora_alpha", type=int, default=32)
     p.add_argument("--lora_dropout", type=float, default=0.05)
+    p.add_argument("--quant_type", default="fp4", choices=["fp4", "nf4"],
+                   help="4-bit quant format. fp4 aligns with GB10 Blackwell's "
+                        "native FP4 tensor cores; nf4 is the classic QLoRA format.")
     p.add_argument("--max_seq_length", type=int, default=4096)
     p.add_argument("--warmup_ratio", type=float, default=0.03)
     p.add_argument("--save_steps", type=int, default=50)
@@ -134,13 +161,15 @@ def format_chat(example: dict, tokenizer) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Quantisation config (NF4 — fits on single DGX Spark)
+# Quantisation config (4-bit — fits on single DGX Spark)
 # ---------------------------------------------------------------------------
 
-def bnb_config() -> BitsAndBytesConfig:
+def bnb_config(quant_type: str = "fp4") -> BitsAndBytesConfig:
+    # FP4 maps onto GB10 Blackwell's native 4-bit tensor cores; NF4 is the
+    # classic QLoRA format (often marginally higher quality, no native HW path).
     return BitsAndBytesConfig(
         load_in_4bit=True,
-        bnb_4bit_quant_type="nf4",
+        bnb_4bit_quant_type=quant_type,
         bnb_4bit_compute_dtype=torch.bfloat16,   # BF16 compute on Blackwell
         bnb_4bit_use_double_quant=True,           # double-quant saves ~0.4 GB extra
     )
@@ -183,6 +212,7 @@ def main():
     print(f"Loading tokeniser: {args.model_id}")
     tokenizer = AutoTokenizer.from_pretrained(
         args.model_id,
+        revision=args.revision,
         token=args.hf_token or None,
         trust_remote_code=True,
     )
@@ -202,15 +232,21 @@ def main():
     print(f"Train: {len(train_ds)}  |  Eval: {len(eval_ds)}")
 
     # ---- model (4-bit) ----
-    print(f"Loading model in NF4: {args.model_id}")
+    print(f"Loading model in {args.quant_type.upper()}: {args.model_id}")
     model = AutoModelForCausalLM.from_pretrained(
         args.model_id,
-        quantization_config=bnb_config(),
-        device_map="auto",               # DGX Spark: single GPU, auto maps correctly
+        revision=args.revision,
+        quantization_config=bnb_config(args.quant_type),
+        device_map={"": 0},              # DGX Spark is a SINGLE GPU. "auto" lets
+                                         # accelerate offload some layers to CPU/disk,
+                                         # which bnb 4-bit rejects. The ~25 GB FP4
+                                         # model fits easily in the 128 GB unified
+                                         # pool, so pin everything to cuda:0.
         trust_remote_code=True,
         token=args.hf_token or None,
-        attn_implementation="flash_attention_2",  # FA2 on Blackwell; if the DeciLM
-                                                   # custom code rejects it, drop this arg
+        attn_implementation="eager",     # DeciLM custom code supports only FA2 or
+                                         # eager (no SDPA path); FA2 has no sm_121
+                                         # (GB10) wheel, so eager is the only option
     )
     model.config.use_cache = False           # required for gradient checkpointing
     model.config.pretraining_tp = 1
