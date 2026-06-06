@@ -1,4 +1,9 @@
-import type { SessionManifest, SessionSummary } from "./types";
+import type {
+  IncidentReport,
+  ReportResult,
+  SessionManifest,
+  SessionSummary,
+} from "./types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
 
@@ -30,6 +35,22 @@ export async function renameSession(
 export async function deleteSession(sessionId: string): Promise<void> {
   const response = await fetch(`${API_BASE}/sessions/${sessionId}`, { method: "DELETE" });
   if (!response.ok) throw new Error(`Failed to delete session (${response.status})`);
+}
+
+export async function fetchReport(sessionId: string): Promise<IncidentReport> {
+  const response = await fetch(`${API_BASE}/sessions/${sessionId}/report`, {
+    cache: "no-store",
+  });
+  if (!response.ok) throw new Error(`Failed to load report (${response.status})`);
+  return response.json();
+}
+
+export async function generateReport(sessionId: string): Promise<ReportResult> {
+  const response = await fetch(`${API_BASE}/sessions/${sessionId}/report`, {
+    method: "POST",
+  });
+  if (!response.ok) throw new Error(`Failed to generate report (${response.status})`);
+  return response.json();
 }
 
 export function frameUrl(sessionId: string, index: number): string {

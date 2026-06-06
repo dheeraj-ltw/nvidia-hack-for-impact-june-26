@@ -40,3 +40,7 @@ MEMORY.md
 
 # TS build cache
 *.tsbuildinfo
+
+# Operator-provided root CAs (per-network) — keep the folder + README, not the certs
+certs/*
+!certs/README.md

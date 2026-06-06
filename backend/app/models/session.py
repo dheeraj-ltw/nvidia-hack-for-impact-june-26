@@ -31,6 +31,7 @@ class SessionManifest(BaseModel):
     frame_offsets: list[float] = Field(default_factory=list)  # per-frame seconds from start
     audio_key: str | None = None
     video_key: str | None = None  # encoded MP4, produced on demand
+    report_key: str | None = None  # incident report JSON, produced on session end
     events: list[RecordedEvent] = Field(default_factory=list)
     # Who was on patrol (no-auth roster) + the post-session speaker-ID result, if run.
     officer_id: str | None = None
@@ -44,6 +45,53 @@ class SessionManifest(BaseModel):
         return max(0.0, self.ended_at - self.started_at)
 
 
+class GuidanceSummary(BaseModel):
+    """A single piece of guidance surfaced during the session, for the report."""
+
+    offset_seconds: float
+    suggestion: str
+    severity: str
+    citations: list[str] = Field(default_factory=list)
+
+
+class IncidentReport(BaseModel):
+    """Structured incident report derived from a finalized session manifest.
+
+    This is what gets stored at sessions/<id>/report.json and dispatched to the
+    logs / report-store / cop-registry webhooks when a session ends.
+    """
+
+    session_id: str
+    label: str | None = None
+    officer_id: str | None = None
+    officer_name: str | None = None
+    started_at: float
+    ended_at: float | None = None
+    duration_seconds: float = 0.0
+    generated_at: float  # unix seconds — when the report was built
+    frame_count: int = 0
+    transcript: str = ""  # full session transcript, speaker-tagged, in order
+    guidance: list[GuidanceSummary] = Field(default_factory=list)
+    speaker_labels: dict[str, Any] = Field(default_factory=dict)  # from diarization, if run
+
+
+class WebhookDispatch(BaseModel):
+    """Outcome of firing one webhook — surfaced so operators can see what was delivered."""
+
+    target: str  # "logs" | "report" | "cop_registry"
+    url: str
+    delivered: bool
+    status_code: int | None = None
+    error: str | None = None
+
+
+class ReportResult(BaseModel):
+    """What the report endpoints return: the report plus per-webhook delivery results."""
+
+    report: IncidentReport
+    dispatches: list[WebhookDispatch] = Field(default_factory=list)
+
+
 class SessionSummary(BaseModel):
     """Lightweight listing entry — what the sessions list endpoint returns."""
 
@@ -54,6 +102,7 @@ class SessionSummary(BaseModel):
     frame_count: int
     has_audio: bool
     has_video: bool
+    has_report: bool = False
     event_count: int
     officer_name: str | None = None
 

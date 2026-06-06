@@ -49,6 +49,13 @@ class SessionRecorder:
     def has_audio(self) -> bool:
         return self._manifest.has_audio
 
+    @property
+    def has_content(self) -> bool:
+        """Did the session capture anything worth reporting (frames, audio, or events)?"""
+        return bool(
+            self._manifest.frame_count or self._manifest.has_audio or self._manifest.events
+        )
+
     def _offset(self, timestamp: float) -> float:
         return max(0.0, timestamp - self._started_at)
 

@@ -73,6 +73,12 @@ async def patrol_websocket(websocket: WebSocket) -> None:
     session_id = uuid.uuid4().hex
     recorder: SessionRecorder | None = None
     last_timestamp = 0.0
+    logger.info(
+        "WS patrol connected: session=%s officer=%s backend=%s",
+        session_id,
+        officer.name if officer else "(none)",
+        type(ai_service).__name__,
+    )
 
     async def emit(event: PatrolEvent) -> None:
         # Persist transcript/guidance so the recorded session can replay its logs.
@@ -128,19 +134,41 @@ async def patrol_websocket(websocket: WebSocket) -> None:
     finally:
         if recorder is not None:
             await recorder.finalize(last_timestamp)
-            # If we know the officer and captured audio, refine the stored transcript into a
-            # clean officer/person1/person2 diarization in the background (needs an STT key).
-            if officer_embedding and recorder.has_audio:
-                task = asyncio.create_task(_run_post_session_identify(session_id))
+            logger.info(
+                "WS patrol ended: session=%s frames=%d audio=%s",
+                session_id,
+                recorder.frame_count,
+                recorder.has_audio,
+            )
+            # Refine the transcript (if we can) and then build + dispatch the incident
+            # report, in the background so the disconnect isn't blocked on either step.
+            # Skip empty sessions entirely — no point reporting a patrol with no content,
+            # and it avoids firing webhooks (incl. the cop registry) on stray connections.
+            if recorder.has_content:
+                run_identify = bool(officer_embedding and recorder.has_audio)
+                task = asyncio.create_task(_finalize_session(session_id, run_identify))
                 _background_tasks.add(task)
                 task.add_done_callback(_background_tasks.discard)
+            else:
+                logger.info("Session %s had no content — skipping report.", session_id)
 
 
-async def _run_post_session_identify(session_id: str) -> None:
-    """Background post-session speaker-ID pass; failures are logged, never raised."""
-    from app.api.sessions import run_session_identification
+async def _finalize_session(session_id: str, run_identify: bool) -> None:
+    """Post-session pipeline: optional speaker-ID, then the incident report + webhooks.
+
+    Identification runs first when possible so the report captures the diarized
+    officer/person1/person2 transcript rather than the live officer/subject labels.
+    Each step is isolated — a failure is logged and never raised from the background task.
+    """
+    from app.api.sessions import generate_session_report, run_session_identification
+
+    if run_identify:
+        try:
+            await run_session_identification(session_id)
+        except Exception as error:  # noqa: BLE001 - background task; nothing to surface to
+            logger.warning("Post-session identification failed for %s: %s", session_id, error)
 
     try:
-        await run_session_identification(session_id)
+        await generate_session_report(session_id)
     except Exception as error:  # noqa: BLE001 - background task; nothing to surface to
-        logger.warning("Post-session identification failed for %s: %s", session_id, error)
+        logger.warning("Incident report generation failed for %s: %s", session_id, error)

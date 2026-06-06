@@ -13,12 +13,15 @@ from app.ai.speaker_id import SpeakerIdError, identify_officer
 from app.api.officers import load_profile
 from app.models.events import EventType, TranscriptEvent
 from app.models.session import (
+    IncidentReport,
     RecordedEvent,
+    ReportResult,
     SessionLabelUpdate,
     SessionManifest,
     SessionSummary,
 )
 from app.recording import EncodingError, encode_session_video, session_prefix
+from app.reporting import generate_and_dispatch
 from app.storage import get_object_store
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
@@ -51,6 +54,7 @@ def _to_summary(manifest: SessionManifest) -> SessionSummary:
         frame_count=manifest.frame_count,
         has_audio=manifest.has_audio,
         has_video=manifest.video_key is not None,
+        has_report=manifest.report_key is not None,
         event_count=len(manifest.events),
         officer_name=manifest.officer_name,
     )
@@ -204,3 +208,40 @@ async def identify_session_speakers(session_id: str) -> SessionManifest:
         return await run_session_identification(session_id)
     except SpeakerIdError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
+
+
+async def generate_session_report(session_id: str) -> ReportResult:
+    """Build the incident report for a session, store it, and dispatch the webhooks.
+
+    Used both by the manual endpoint and by the session-end background task. Records the
+    report key back onto the manifest so the session list can show that a report exists.
+    """
+    manifest = await _load_manifest(session_id)
+    store = get_object_store()
+    result = await generate_and_dispatch(store, manifest)
+    # Re-load before stamping report_key: the post-session identify pass may have written
+    # diarization onto the manifest concurrently, and we must not clobber it (last-write-wins).
+    fresh = await _load_manifest(session_id)
+    fresh.report_key = f"{session_prefix(session_id)}/report.json"
+    await _save_manifest(fresh)
+    return result
+
+
+@router.get("/{session_id}/report", response_model=IncidentReport)
+async def get_session_report(session_id: str) -> IncidentReport:
+    """Return the stored incident report, 404 if one hasn't been generated yet."""
+    manifest = await _load_manifest(session_id)
+    if not manifest.report_key:
+        raise HTTPException(status_code=404, detail="No report generated for this session")
+    store = get_object_store()
+    try:
+        body, _ = await store.get(manifest.report_key)
+    except KeyError as error:
+        raise HTTPException(status_code=404, detail="Report not found") from error
+    return IncidentReport.model_validate(json.loads(body))
+
+
+@router.post("/{session_id}/report", response_model=ReportResult)
+async def create_session_report(session_id: str) -> ReportResult:
+    """Generate (or regenerate) the incident report and redispatch it to the webhooks."""
+    return await generate_session_report(session_id)

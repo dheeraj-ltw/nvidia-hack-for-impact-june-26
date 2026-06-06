@@ -33,5 +33,7 @@ See the [root README](../README.md) for setup and the `AI_BACKEND` modes.
 | Session playback — MP4 encode (ffmpeg) + synced logs | ✅ Built |
 | `AIService` interface (stub default · live pluggable) | ✅ Built |
 | ElevenLabs speech-to-text + text-to-speech | ✅ Built |
-| NVIDIA VLM + Nemotron reasoning (legal RAG) | Planned |
-| Reports + webhooks → registry | Planned |
+| Fine-tuned PoliceAI reasoner (SCENE CARD prompt → cited guidance) | ✅ Built |
+| Incident reports + webhooks → logs / report store / cop registry | ✅ Built |
+| NVIDIA VLM scene understanding + detections | Planned (separate PR) |
+| Legal RAG fallback for the reasoner | Planned |

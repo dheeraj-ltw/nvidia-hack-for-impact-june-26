@@ -1,11 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { X } from "lucide-react";
+import { FileText, RefreshCw, X } from "lucide-react";
 import { GuidanceCard } from "@/components/GuidanceCard";
 import { formatSpeaker } from "@/components/LogsPanel";
-import { fetchSession, videoUrl } from "@/lib/api";
-import type { GuidanceEvent, RecordedEvent, SessionManifest, SessionSummary } from "@/lib/types";
+import { fetchReport, fetchSession, generateReport, videoUrl } from "@/lib/api";
+import type {
+  GuidanceEvent,
+  IncidentReport,
+  RecordedEvent,
+  SessionManifest,
+  SessionSummary,
+} from "@/lib/types";
 
 interface PlaybackModalProps {
   session: SessionSummary;
@@ -21,6 +27,9 @@ export function PlaybackModal({ session, onClose }: PlaybackModalProps) {
   const [manifest, setManifest] = useState<SessionManifest | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState(0);
+  const [report, setReport] = useState<IncidentReport | null>(null);
+  const [showReport, setShowReport] = useState(false);
+  const [reportBusy, setReportBusy] = useState(false);
   const videoElementRef = useRef<HTMLVideoElement | null>(null);
   const activeLogRef = useRef<HTMLDivElement | null>(null);
 
@@ -43,6 +52,28 @@ export function PlaybackModal({ session, onClose }: PlaybackModalProps) {
   useEffect(() => {
     activeLogRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [currentTime]);
+
+  // Load the stored report lazily when the operator opens the report view; if none was
+  // generated yet (or it's stale), the regenerate action builds + redispatches one.
+  const openReport = useCallback(async () => {
+    setShowReport(true);
+    if (report) return;
+    try {
+      setReport(await fetchReport(session.session_id));
+    } catch {
+      setReport(null); // no report yet — operator can generate one
+    }
+  }, [report, session.session_id]);
+
+  const regenerateReport = useCallback(async () => {
+    setReportBusy(true);
+    try {
+      const result = await generateReport(session.session_id);
+      setReport(result.report);
+    } finally {
+      setReportBusy(false);
+    }
+  }, [session.session_id]);
 
   const seekTo = useCallback((offsetSeconds: number) => {
     const video = videoElementRef.current;
@@ -74,13 +105,24 @@ export function PlaybackModal({ session, onClose }: PlaybackModalProps) {
           <h2 className="truncate text-sm font-medium">
             {session.label ?? session.session_id.slice(0, 12)}
           </h2>
-          <button
-            onClick={onClose}
-            aria-label="Close"
-            className="grid h-7 w-7 place-items-center rounded-md text-muted transition-colors hover:bg-panel-hover hover:text-fg"
-          >
-            <X className="h-4 w-4" />
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => (showReport ? setShowReport(false) : void openReport())}
+              className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs transition-colors hover:bg-panel-hover ${
+                showReport ? "text-fg" : "text-muted hover:text-fg"
+              }`}
+            >
+              <FileText className="h-3.5 w-3.5" />
+              {showReport ? "Log" : "Report"}
+            </button>
+            <button
+              onClick={onClose}
+              aria-label="Close"
+              className="grid h-7 w-7 place-items-center rounded-md text-muted transition-colors hover:bg-panel-hover hover:text-fg"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
         </header>
 
         {error ? (
@@ -100,28 +142,114 @@ export function PlaybackModal({ session, onClose }: PlaybackModalProps) {
             </div>
 
             <div className="flex min-h-0 flex-col gap-2 overflow-y-auto border-t border-border p-3 md:border-l md:border-t-0">
-              <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">
-                Session log
-              </h3>
-              {events.length === 0 ? (
-                <p className="text-sm text-muted">No transcript or guidance was recorded.</p>
+              {showReport ? (
+                <ReportPanel report={report} busy={reportBusy} onRegenerate={regenerateReport} />
               ) : (
-                events.map((entry, index) => (
-                  <LogEntry
-                    key={index}
-                    entry={entry}
-                    active={index === activeIndex}
-                    officerName={manifest?.officer_name}
-                    ref={index === activeIndex ? activeLogRef : undefined}
-                    onSeek={() => seekTo(entry.offset_seconds)}
-                  />
-                ))
+                <>
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">
+                    Session log
+                  </h3>
+                  {events.length === 0 ? (
+                    <p className="text-sm text-muted">No transcript or guidance was recorded.</p>
+                  ) : (
+                    events.map((entry, index) => (
+                      <LogEntry
+                        key={index}
+                        entry={entry}
+                        active={index === activeIndex}
+                        officerName={manifest?.officer_name}
+                        ref={index === activeIndex ? activeLogRef : undefined}
+                        onSeek={() => seekTo(entry.offset_seconds)}
+                      />
+                    ))
+                  )}
+                </>
               )}
             </div>
           </div>
         )}
       </div>
     </div>
+  );
+}
+
+interface ReportPanelProps {
+  report: IncidentReport | null;
+  busy: boolean;
+  onRegenerate: () => void;
+}
+
+function ReportPanel({ report, busy, onRegenerate }: ReportPanelProps) {
+  return (
+    <>
+      <div className="flex items-center justify-between">
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">
+          Incident report
+        </h3>
+        <button
+          onClick={onRegenerate}
+          disabled={busy}
+          className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted transition-colors hover:bg-panel-hover hover:text-fg disabled:opacity-40"
+        >
+          <RefreshCw className={`h-3.5 w-3.5 ${busy ? "animate-spin" : ""}`} />
+          {report ? "Regenerate" : "Generate"}
+        </button>
+      </div>
+
+      {!report ? (
+        <p className="text-sm text-muted">
+          No report generated yet. Generate one to build it and dispatch the configured webhooks.
+        </p>
+      ) : (
+        <div className="flex flex-col gap-3 text-sm">
+          <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+            {report.officer_name && (
+              <>
+                <dt className="text-muted">Officer</dt>
+                <dd>{report.officer_name}</dd>
+              </>
+            )}
+            <dt className="text-muted">Duration</dt>
+            <dd>{Math.round(report.duration_seconds)}s</dd>
+            <dt className="text-muted">Frames</dt>
+            <dd>{report.frame_count}</dd>
+            <dt className="text-muted">Guidance</dt>
+            <dd>{report.guidance.length}</dd>
+          </dl>
+
+          <section>
+            <h4 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted">
+              Guidance issued
+            </h4>
+            {report.guidance.length === 0 ? (
+              <p className="text-xs text-muted">No guidance was surfaced during this session.</p>
+            ) : (
+              <ul className="space-y-1.5">
+                {report.guidance.map((item, index) => (
+                  <li key={index} className="rounded-md border border-border bg-panel p-2">
+                    <p className="text-xs">{item.suggestion}</p>
+                    {item.citations.length > 0 && (
+                      <p className="mt-1 text-[11px] italic text-muted">
+                        {item.citations.join(" · ")}
+                      </p>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <section>
+            <h4 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted">
+              Transcript
+            </h4>
+            <pre className="whitespace-pre-wrap wrap-break-word rounded-md border border-border bg-panel p-2 text-xs leading-relaxed">
+              {report.transcript || "(no transcript recorded)"}
+            </pre>
+          </section>
+        </div>
+      )}
+    </>
   );
 }
 
