@@ -17,6 +17,7 @@ from pptx.util import Emu, Inches, Pt
 
 DOCS = pathlib.Path(__file__).resolve().parent
 ARCH_PNG = DOCS / "architecture_light.png"
+LOGO_PNG = DOCS / "jarvis-logo.png"   # rsvg-convert -w 600 jarvis-logo.svg -o docs/jarvis-logo.png
 OUT = DOCS / "JARVIS.pptx"
 
 # ---- Palette: clean light, NVIDIA green ----------------------------------
@@ -126,20 +127,24 @@ def _header(slide, title, kicker=None):
 
 
 # ----------------------------------------------------------------- layouts
-def title_slide(kicker, title, subtitle, note):
+def title_slide(kicker, headline, note):
+    """Logo as the hero (it carries the JARVIS wordmark + tagline) + pitch copy."""
     s = prs.slides.add_slide(BLANK)
     _bg(s)
-    # left accent column
-    _rect(s, 0, 0, Inches(0.45), H, GREEN)
-    _, kf = _box(s, Inches(1.1), Inches(2.0), Inches(11), Inches(0.4))
+    _rect(s, 0, 0, Inches(0.45), H, GREEN)  # left accent column
+    if LOGO_PNG.exists():
+        s.shapes.add_picture(str(LOGO_PNG), Inches(1.05), Inches(1.35), height=Inches(4.8))
+    else:
+        _, jf = _box(s, Inches(1.1), Inches(3.0), Inches(4), Inches(1.2))
+        _run(jf.paragraphs[0], "JARVIS", 52, INK, bold=True)
+    tx, tw = Inches(5.75), Inches(6.85)
+    _, kf = _box(s, tx, Inches(2.3), tw, Inches(0.4))
     _run(kf.paragraphs[0], kicker.upper(), 14, GREEN_TX, bold=True)
-    _, tf = _box(s, Inches(1.1), Inches(2.5), Inches(11.3), Inches(1.6))
-    _run(tf.paragraphs[0], title, 52, INK, bold=True)
-    _rect(s, Inches(1.13), Inches(4.05), Inches(2.4), Pt(4), GREEN)
-    _, sf = _box(s, Inches(1.1), Inches(4.3), Inches(11), Inches(1.0))
-    _run(sf.paragraphs[0], subtitle, 22, INK_SOFT)
+    _, hf = _box(s, tx, Inches(2.85), tw, Inches(1.8))
+    _run(hf.paragraphs[0], headline, 27, INK, bold=True)
+    _rect(s, tx, Inches(4.7), Inches(2.0), Pt(4), GREEN)
     if note:
-        _, nf = _box(s, Inches(1.1), Inches(6.2), Inches(11), Inches(0.6))
+        _, nf = _box(s, tx, Inches(4.95), tw, Inches(1.0))
         _run(nf.paragraphs[0], note, 15, MUTED, italic=True)
     return s
 
@@ -382,6 +387,8 @@ def section_slide(kicker, title, subtitle):
     _bg(s)
     _rect(s, 0, 0, W, H, PANEL)
     _rect(s, 0, 0, Inches(0.45), H, GREEN)
+    if LOGO_PNG.exists():
+        s.shapes.add_picture(str(LOGO_PNG), W - Inches(2.55), Inches(0.7), height=Inches(2.0))
     _, kf = _box(s, Inches(1.1), Inches(2.9), Inches(11), Inches(0.4))
     _run(kf.paragraphs[0], kicker.upper(), 14, GREEN_TX, bold=True)
     _, tf = _box(s, Inches(1.1), Inches(3.35), Inches(11), Inches(1.1))
@@ -396,10 +403,8 @@ def section_slide(kicker, title, subtitle):
 # ---------------------------------------------------------------- build deck
 title_slide(
     "NVIDIA Impact Hackathon  ·  runs locally on DGX Spark",
-    "JARVIS",
-    "Judicial Advisor & Real-time Voice Intelligence System",
-    "A real-time, on-device legal & de-escalation copilot for frontline officers — "
-    "assistive and human-in-the-loop. It cites the law; it never decides.",
+    "A real-time, on-device legal & de-escalation copilot for frontline officers",
+    "Assistive and human-in-the-loop. It cites the law; it never decides.",
 )
 
 content_slide("The problem", [
@@ -487,31 +492,11 @@ content_slide("Innovation & execution", [
      "record whose citations don't trace back to the corpus.", 0, "bullet"),
     ("Performance & engineering:", 0, "head"),
     ("Drop-if-busy throttling → bounded real-time latency.", 0, "bullet"),
-    ("FP4 QLoRA → 49B fine-tune fits in ~38 GB; quantized GGUF (Q4_K_M) served via llama.cpp.", 0, "bullet"),
+    ("FP16 QLoRA → 49B fine-tune fits in ~98 GB; quantized GGUF served via llama.cpp.", 0, "bullet"),
     ("Local resemblyzer voice embeddings → speaker labels with no API call.", 0, "bullet"),
 ], kicker="Innovation · 20 pts")
 
-table_slide(
-    "Results & build status",
-    ["Component", "Status"],
-    [
-        ["Frontend capture + reactive UI · WebSocket orchestrator", "✅ Built"],
-        ["Session recording → MinIO · MP4 playback w/ synced logs", "✅ Built"],
-        ["Speech-to-text + text-to-speech (ElevenLabs)", "✅ Built"],
-        ["Speaker ID — live officer/subject + post-session diarization", "✅ Built"],
-        ["Grounded-synthetic dataset + Nemotron-49B QLoRA fine-tune", "✅ Built / trained"],
-        ["Local serving — vLLM (video) + llama.cpp (PoliceAI) containers", "✅ Built (standalone)"],
-        ["Wiring local models into the live loop · reports/webhooks", "🔜 Final integration"],
-    ],
-    col_widths=[8.4, 3.23],
-    intro="Fine-tune (DGX Spark target): eval loss 0.863, perplexity 2.37 after 3 epochs.",
-    kicker="Where we are",
-)
-
 content_slide("Roadmap & the ask", [
-    ("Next wiring step (hours, not weeks):", 0, "head"),
-    ("Point the live orchestrator at the two local Spark services → guidance generated fully "
-     "on-device; then add incident reports → webhooks.", 0, "bullet"),
     ("Beyond the hack:", 0, "head"),
     ("Expand corpus + dataset (more incident types, force-policy packs).", 0, "bullet"),
     ("Per-force fine-tunes; on-device continuous learning from reviewed sessions.", 0, "bullet"),

@@ -5,39 +5,15 @@ paginate: true
 footer: 'JARVIS · NVIDIA Impact Hackathon'
 backgroundColor: #ffffff
 color: #1c212e
-style: |
-  section {
-    font-size: 26px;
-    padding: 60px 64px 72px 72px;
-    border-left: 10px solid #76b900;       /* accent bar */
-    font-family: "Helvetica Neue", Arial, sans-serif;
-  }
-  h1 { color: #1c212e; border-bottom: 3px solid #76b900; padding-bottom: 8px; }
-  h2 { color: #1c212e; border-bottom: 3px solid #76b900; padding-bottom: 6px; }
-  h3 { color: #4e7a00; }
-  strong { color: #4e7a00; }               /* darker green for contrast on white */
-  em { color: #6b7280; }
-  code { color: #1c212e; background: #f5f7f1; padding: 1px 5px; border-radius: 3px; }
-  table { font-size: 21px; border-collapse: collapse; }
-  th { background: #76b900; color: #ffffff; }
-  td, th { border: 1px solid #e3e7ec; padding: 8px 12px; }
-  tr:nth-child(even) td { background: #f5f7f1; }
-  blockquote { color: #3b4252; border-left: 4px solid #76b900; background: #f5f7f1; }
-  a { color: #4e7a00; }
-  section.lead { border-left: 10px solid #76b900; }
-  section.lead h1 { border-bottom: none; }
-  footer, .pagination { color: #6b7280; }
 ---
 
 <!-- _class: lead -->
 <!-- _footer: "" -->
 <!-- _paginate: false -->
 
-# JARVIS
+![h:340px](jarvis-logo.svg)
 
-### Judicial Advisor & Real-time Voice Intelligence System
-
-A real-time, on-device legal & de-escalation copilot for frontline officers
+#### A real-time, on-device legal & de-escalation copilot for frontline officers
 
 **NVIDIA Impact Hackathon** · runs locally on **DGX Spark**
 
@@ -127,7 +103,17 @@ Self-hosted **vLLM** (video) + **llama.cpp** (the fine-tuned LLM), both OpenAI-c
 | **NVIDIA vLLM container** (`nvcr.io`) | Serves the local vision model |
 | **NIM / Nemotron API** | Pluggable cloud reasoning backend |
 
-**Why Spark, specifically:** 128 GB **unified** memory holds the **49B model + KV cache + video-frame buffer + speaker embeddings simultaneously** — no sharding, no juggling a 24 GB discrete GPU. And **local = privacy**: evidence-grade body-cam data stays on the device.
+---
+
+## Why Spark, specifically
+
+**Unified memory.** 128 GB holds the **49B model + KV cache + video-frame buffer + speaker embeddings simultaneously** — no sharding, no juggling a 24 GB discrete GPU.
+
+**Privacy.** Local inference means evidence-grade body-cam data and PII stay on the device — essential for policing and the chain of custody.
+
+**Latency.** On-device guidance during a live encounter — no round-trip to a cloud API.
+
+> *"Merely calling GPT-4 via API gets 0 points." We fine-tuned an NVIDIA model and run it locally.*
 
 ---
 
@@ -181,6 +167,8 @@ Self-hosted **vLLM** (video) + **llama.cpp** (the fine-tuned LLM), both OpenAI-c
 <!-- _class: lead -->
 <!-- _footer: "" -->
 <!-- _paginate: false -->
+
+![h:150px](jarvis-logo.svg)
 
 # Appendix
 
