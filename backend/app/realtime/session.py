@@ -21,7 +21,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from app.ai import get_ai_service
 from app.ai.base import Frame
-from app.models.events import PatrolEvent, StatusEvent
+from app.models.events import GuidanceEvent, PatrolEvent, StatusEvent, TranscriptEvent
 from app.pipeline.orchestrator import SessionPipeline
 from app.recording import SessionRecorder
 from app.storage import get_object_store
@@ -38,14 +38,17 @@ async def patrol_websocket(websocket: WebSocket) -> None:
     await websocket.accept()
     ai_service = get_ai_service()
 
-    async def emit(event: PatrolEvent) -> None:
-        await websocket.send_text(event.model_dump_json())
-
-    pipeline = SessionPipeline(ai_service=ai_service, emit=emit)
-
     session_id = uuid.uuid4().hex
     recorder: SessionRecorder | None = None
     last_timestamp = 0.0
+
+    async def emit(event: PatrolEvent) -> None:
+        # Persist transcript/guidance so the recorded session can replay its logs.
+        if recorder is not None and isinstance(event, TranscriptEvent | GuidanceEvent):
+            recorder.record_event(event)
+        await websocket.send_text(event.model_dump_json())
+
+    pipeline = SessionPipeline(ai_service=ai_service, emit=emit)
 
     try:
         while True:
@@ -70,7 +73,7 @@ async def patrol_websocket(websocket: WebSocket) -> None:
                 )
 
             if message_kind == MESSAGE_KIND_VIDEO:
-                await recorder.add_frame(payload)
+                await recorder.add_frame(payload, timestamp)
                 await pipeline.handle_frame(
                     Frame(ts=timestamp, jpeg=payload, width=width, height=height)
                 )

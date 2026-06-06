@@ -80,6 +80,18 @@ class ObjectStore:
                     common_prefixes.append(entry["Prefix"])
             return common_prefixes
 
+    async def delete_prefix(self, prefix: str) -> int:
+        """Delete every object under a prefix. Returns the number of objects removed."""
+        async with self._client() as s3:
+            paginator = s3.get_paginator("list_objects_v2")
+            deleted = 0
+            async for page in paginator.paginate(Bucket=self._bucket, Prefix=prefix):
+                keys = [{"Key": item["Key"]} for item in page.get("Contents", [])]
+                if keys:
+                    await s3.delete_objects(Bucket=self._bucket, Delete={"Objects": keys})
+                    deleted += len(keys)
+            return deleted
+
 
 @lru_cache
 def get_object_store() -> ObjectStore:
