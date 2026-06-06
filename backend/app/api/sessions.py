@@ -2,12 +2,18 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
+from typing import Any
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response, StreamingResponse
 
+from app.ai.speaker_id import SpeakerIdError, identify_officer
+from app.api.officers import load_profile
+from app.models.events import EventType, TranscriptEvent
 from app.models.session import (
+    RecordedEvent,
     SessionLabelUpdate,
     SessionManifest,
     SessionSummary,
@@ -46,6 +52,7 @@ def _to_summary(manifest: SessionManifest) -> SessionSummary:
         has_audio=manifest.has_audio,
         has_video=manifest.video_key is not None,
         event_count=len(manifest.events),
+        officer_name=manifest.officer_name,
     )
 
 
@@ -125,3 +132,75 @@ async def get_video(session_id: str) -> StreamingResponse:
     return StreamingResponse(
         store.stream(manifest.video_key), media_type="video/mp4", headers=headers
     )
+
+
+def _diarized_events(segments: list[dict[str, Any]]) -> list[RecordedEvent]:
+    """Turn diarized officer/personN segments into replayable transcript events."""
+    events: list[RecordedEvent] = []
+    for seg in segments:
+        if not seg.get("text"):
+            continue
+        transcript = TranscriptEvent(
+            ts=float(seg["start"]),
+            text=seg["text"],
+            speaker=seg["speaker_label"],
+            is_final=True,
+        )
+        events.append(
+            RecordedEvent(
+                offset_seconds=float(seg["start"]),
+                kind=EventType.TRANSCRIPT.value,
+                payload=transcript.model_dump(mode="json"),
+            )
+        )
+    return events
+
+
+async def run_session_identification(session_id: str) -> SessionManifest:
+    """Re-label a recorded session's transcript by officer vs person1/person2/...
+
+    Loads the recorded audio and the session's enrolled officer, runs diarized speaker-ID,
+    then *replaces* the transcript events with the diarized turns (guidance events are kept)
+    and records the diarization summary. Returns the updated manifest.
+
+    Raises SpeakerIdError if it can't run (no officer, no audio, or no STT key) — callers
+    decide whether that's a hard error (manual endpoint) or a soft skip (background task).
+    """
+    manifest = await _load_manifest(session_id)
+    if not manifest.officer_id:
+        raise SpeakerIdError("Session has no enrolled officer to identify.")
+    if not manifest.audio_key:
+        raise SpeakerIdError("Session has no recorded audio.")
+
+    officer = await load_profile(manifest.officer_id)
+    if not officer.embedding:
+        raise SpeakerIdError("Enrolled officer has no voice embedding.")
+
+    store = get_object_store()
+    audio, _ = await store.get(manifest.audio_key)
+    result = await asyncio.to_thread(identify_officer, audio, officer.embedding)
+
+    # Replace transcript events with the diarized segments; preserve guidance events in order.
+    guidance_events = [e for e in manifest.events if e.kind != EventType.TRANSCRIPT.value]
+    transcript_events = _diarized_events(result.get("segments", []))
+    merged = transcript_events + guidance_events
+    merged.sort(key=lambda event: event.offset_seconds)
+    manifest.events = merged
+
+    manifest.diarization = {
+        "matched": result.get("matched", False),
+        "officer_speaker_id": result.get("officer_speaker_id"),
+        "similarities": result.get("similarities", {}),
+        "labels": result.get("labels", {}),
+    }
+    await _save_manifest(manifest)
+    return manifest
+
+
+@router.post("/{session_id}/identify", response_model=SessionManifest)
+async def identify_session_speakers(session_id: str) -> SessionManifest:
+    """Run (or re-run) the post-session speaker-ID pass and return the updated manifest."""
+    try:
+        return await run_session_identification(session_id)
+    except SpeakerIdError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error

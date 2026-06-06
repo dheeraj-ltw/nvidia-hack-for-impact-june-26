@@ -179,7 +179,7 @@ export function usePatrolSession() {
     clipTimerRef.current = window.setInterval(recordOneClip, STT_CLIP_MS);
   }, []);
 
-  const start = useCallback(async () => {
+  const start = useCallback(async (officerId?: string) => {
     setState({ ...INITIAL, conn: "connecting" });
 
     let stream: MediaStream;
@@ -203,7 +203,8 @@ export function usePatrolSession() {
       await videoRef.current.play().catch(() => {});
     }
 
-    const socket = new WebSocket(`${WS_BASE}/ws/patrol`);
+    const query = officerId ? `?officer_id=${encodeURIComponent(officerId)}` : "";
+    const socket = new WebSocket(`${WS_BASE}/ws/patrol${query}`);
     socket.binaryType = "arraybuffer";
     socketRef.current = socket;
     socket.onopen = () => {

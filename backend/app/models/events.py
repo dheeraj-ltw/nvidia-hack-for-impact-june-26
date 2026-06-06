@@ -50,7 +50,8 @@ class TranscriptEvent(BaseModel):
     type: Literal[EventType.TRANSCRIPT] = EventType.TRANSCRIPT
     ts: float
     text: str
-    speaker: Literal["officer", "subject", "unknown"] = "unknown"
+    # "officer" / "subject" / "unknown" live; the post-session pass also emits "person1", ...
+    speaker: str = "unknown"
     is_final: bool = True
 
 

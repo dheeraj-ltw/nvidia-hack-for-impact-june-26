@@ -124,18 +124,66 @@ The flow, per-component build status, and how to regenerate the diagram live in
 ## Quick start
 
 ```bash
-cp .env.example .env
-docker compose up --build
+cp .env.example .env          # then add keys / adjust ports (see below)
+docker compose up --build -d  # --build only needed the first time (or after dep changes)
 ```
 
 - Frontend: http://localhost:3000
 - API docs: http://localhost:8000/docs
-- MinIO console: http://localhost:9001 (`minioadmin` / `minioadmin`)
+- MinIO console: http://localhost:9101 (`minioadmin` / `minioadmin`)
+
+After the first build, just start the stack — code changes hot-reload via bind mounts, so you
+**don't** need `--build` again:
+
+```bash
+docker compose up -d          # day-to-day start
+docker compose logs -f        # follow logs
+docker compose down           # stop and remove containers (keeps the minio_data volume)
+```
+
+Only rebuild when dependencies change (`backend/pyproject.toml` or `frontend/package.json`):
+
+```bash
+docker compose up --build -d api   # rebuild just the service that changed
+```
+
+> **Why this matters:** the three services share fixed container names
+> (`<project>-{api,web,minio}-1`), so `up` recreates them in place rather than spawning new ones.
+> Reflexively passing `--build` every run rebuilds the images and leaves dangling `<none>` images
+> behind. To clean those up: `docker image prune -f`.
+
+### Port conflicts
+
+If a host port is already in use (e.g. `bind: address already in use` on 9000), override it in
+`.env` — the container ports are unchanged, so nothing internal breaks:
+
+```bash
+WEB_PORT=3000
+API_PORT=8000
+MINIO_PORT=9100          # MinIO S3 API on the host
+MINIO_CONSOLE_PORT=9101  # MinIO web console on the host
+```
 
 To enable speech, set `AI_BACKEND=live` and add your `ELEVENLABS_API_KEY` (and `ELEVENLABS_VOICE_ID`)
 in `.env` — see [.env.example](.env.example).
 
-Click **Start patrol**, allow the camera, and the session records to MinIO. Stop it, and the
+### Officer onboarding & speaker identification
+
+There's no login. Before the first patrol you **onboard an officer**: enter a name and record a
+short voice sample (~6–8 s). This is reusable — onboard once, then pick your name from the roster
+on later visits (the selection is remembered in the browser). The voice sample lets the system
+tell the officer apart from the people they're speaking to:
+
+- **Live:** each spoken clip is matched against the officer's enrolled voice, so the transcript
+  tags lines `officer` vs `subject` in real time. Uses local voice embeddings (`resemblyzer`) — no
+  API key needed, works in `stub` mode.
+- **Post-session:** when a patrol with an enrolled officer ends, a background pass re-transcribes
+  the recording with **diarization** (ElevenLabs Scribe) and relabels every turn as
+  `officer` / `person1` / `person2` … Playback then shows who said what. This pass needs
+  `ELEVENLABS_API_KEY`; without it the live `officer`/`subject` labels are kept and nothing breaks.
+  You can re-run it manually with `POST /sessions/{id}/identify`.
+
+Then click **Start patrol**, allow the camera, and the session records to MinIO. Stop it, and the
 recording appears under **Recorded sessions** with frame thumbnails and audio playback.
 
 ### Local dev (without Docker)
@@ -155,8 +203,9 @@ cd frontend && npm install && npm run dev
 | `backend/app/realtime/` | WebSocket ingest of frames + audio |
 | `backend/app/recording/` | Per-session recorder + ffmpeg MP4 encoder → object storage |
 | `backend/app/storage/` | Async S3/MinIO client |
-| `backend/app/api/sessions.py` | Sessions API — list / detail / playback / rename / delete |
-| `backend/app/ai/` | `AIService` interface — `stub` and `live` (ElevenLabs STT/TTS) backends |
+| `backend/app/api/sessions.py` | Sessions API — list / detail / playback / rename / delete / identify |
+| `backend/app/api/officers.py` | Officer roster — enroll (name + voice sample) / list / delete |
+| `backend/app/ai/` | `AIService` interface (`stub`/`live`) + `speaker_id.py` (diarize + officer match) |
 | `backend/app/pipeline/` | Orchestrator: frame/audio → AI → events |
 | `frontend/app/` | Live patrol console |
 | `frontend/components/` | Feed, logs panel, session library, playback modal, UI primitives |

@@ -1,0 +1,10 @@
+# Keep the build context small so `COPY . .` doesn't bust the layer cache
+# (and trigger a full rebuild) on every `docker compose up --build`.
+node_modules
+.next
+.git
+.gitignore
+.env
+.env.local
+npm-debug.log*
+*.log

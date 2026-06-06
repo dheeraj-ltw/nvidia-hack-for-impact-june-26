@@ -32,6 +32,10 @@ class SessionManifest(BaseModel):
     audio_key: str | None = None
     video_key: str | None = None  # encoded MP4, produced on demand
     events: list[RecordedEvent] = Field(default_factory=list)
+    # Who was on patrol (no-auth roster) + the post-session speaker-ID result, if run.
+    officer_id: str | None = None
+    officer_name: str | None = None
+    diarization: dict[str, Any] | None = None
 
     @property
     def duration_seconds(self) -> float:
@@ -51,6 +55,7 @@ class SessionSummary(BaseModel):
     has_audio: bool
     has_video: bool
     event_count: int
+    officer_name: str | None = None
 
 
 class SessionLabelUpdate(BaseModel):
