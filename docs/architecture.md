@@ -1,7 +1,7 @@
 # Architecture
 
-The **intended** end-to-end system. Components built today are noted; the rest are planned
-(see the phase roadmap in the root [README](../README.md)).
+The **intended** end-to-end system. Components built today are marked below; the rest are planned.
+See the [root README](../README.md) for setup and the `AI_BACKEND` modes.
 
 ![Patrol Assist architecture](architecture.png)
 
@@ -29,7 +29,9 @@ The **intended** end-to-end system. Components built today are noted; the rest a
 | Frontend capture + reactive UI | ✅ Built |
 | WebSocket session + orchestrator | ✅ Built |
 | Session recording → MinIO (frames + audio + manifest) | ✅ Built |
-| Sessions API (list / detail / playback) | ✅ Built |
+| Sessions API (list / detail / rename / delete) | ✅ Built |
+| Session playback — MP4 encode (ffmpeg) + synced logs | ✅ Built |
 | `AIService` interface (stub default · live pluggable) | ✅ Built |
-| Live AI adapters (STT / VLM / Nemotron+RAG / TTS) | Planned |
+| ElevenLabs speech-to-text + text-to-speech | ✅ Built |
+| NVIDIA VLM + Nemotron reasoning (legal RAG) | Planned |
 | Reports + webhooks → registry | Planned |

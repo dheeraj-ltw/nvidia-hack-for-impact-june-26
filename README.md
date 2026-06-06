@@ -113,12 +113,13 @@ model can analyze it later. Swapping `AI_BACKEND` changes the intelligence witho
 
 ![Patrol Assist architecture](docs/architecture.png)
 
-Full diagram and component build-status: [docs/architecture.md](docs/architecture.md).
+The flow, per-component build status, and how to regenerate the diagram live in
+**[docs/architecture.md](docs/architecture.md)** (Mermaid source: [docs/architecture.mmd](docs/architecture.mmd)).
 
 | `AI_BACKEND` | Behavior |
 |--------------|----------|
 | `stub` (default) | Deterministic local detections/guidance for exercising the event path (no keys). |
-| `live` | NVIDIA NIM (VLM + Nemotron) + ElevenLabs (STT/TTS). |
+| `live` | ElevenLabs speech-to-text + text-to-speech (built); NVIDIA VLM + Nemotron reasoning (planned). |
 
 ## Quick start
 
@@ -129,7 +130,10 @@ docker compose up --build
 
 - Frontend: http://localhost:3000
 - API docs: http://localhost:8000/docs
-- MinIO console: http://localhost:9101 (`minioadmin` / `minioadmin`)
+- MinIO console: http://localhost:9001 (`minioadmin` / `minioadmin`)
+
+To enable speech, set `AI_BACKEND=live` and add your `ELEVENLABS_API_KEY` (and `ELEVENLABS_VOICE_ID`)
+in `.env` — see [.env.example](.env.example).
 
 Click **Start patrol**, allow the camera, and the session records to MinIO. Stop it, and the
 recording appears under **Recorded sessions** with frame thumbnails and audio playback.
@@ -149,10 +153,12 @@ cd frontend && npm install && npm run dev
 | Path | What |
 |------|------|
 | `backend/app/realtime/` | WebSocket ingest of frames + audio |
-| `backend/app/recording/` | Per-session recorder → object storage |
+| `backend/app/recording/` | Per-session recorder + ffmpeg MP4 encoder → object storage |
 | `backend/app/storage/` | Async S3/MinIO client |
-| `backend/app/api/sessions.py` | List recorded sessions + media playback |
-| `backend/app/ai/` | `AIService` interface — stub / live backends |
-| `backend/app/pipeline/` | Orchestrator: frame → AI → events |
-| `frontend/app/` | Live patrol console + recorded-sessions list |
+| `backend/app/api/sessions.py` | Sessions API — list / detail / playback / rename / delete |
+| `backend/app/ai/` | `AIService` interface — `stub` and `live` (ElevenLabs STT/TTS) backends |
+| `backend/app/pipeline/` | Orchestrator: frame/audio → AI → events |
+| `frontend/app/` | Live patrol console |
+| `frontend/components/` | Feed, logs panel, session library, playback modal, UI primitives |
 | `frontend/lib/` | WebSocket client, capture loop, API client, types |
+| `docs/` | Architecture diagram + write-up |
