@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
 import { GuidanceCard } from "@/components/GuidanceCard";
+import { formatSpeaker } from "@/components/LogsPanel";
 import { fetchSession, videoUrl } from "@/lib/api";
 import type { GuidanceEvent, RecordedEvent, SessionManifest, SessionSummary } from "@/lib/types";
 
@@ -110,6 +111,7 @@ export function PlaybackModal({ session, onClose }: PlaybackModalProps) {
                     key={index}
                     entry={entry}
                     active={index === activeIndex}
+                    officerName={manifest?.officer_name}
                     ref={index === activeIndex ? activeLogRef : undefined}
                     onSeek={() => seekTo(entry.offset_seconds)}
                   />
@@ -126,11 +128,12 @@ export function PlaybackModal({ session, onClose }: PlaybackModalProps) {
 interface LogEntryProps {
   entry: RecordedEvent;
   active: boolean;
+  officerName?: string | null;
   onSeek: () => void;
   ref?: React.Ref<HTMLDivElement>;
 }
 
-function LogEntry({ entry, active, onSeek, ref }: LogEntryProps) {
+function LogEntry({ entry, active, officerName, onSeek, ref }: LogEntryProps) {
   const stamp = formatClock(entry.offset_seconds);
   const baseClasses =
     "cursor-pointer rounded-md border px-2 py-1.5 text-left transition-colors";
@@ -142,7 +145,27 @@ function LogEntry({ entry, active, onSeek, ref }: LogEntryProps) {
     <div ref={ref} onClick={onSeek} className={`${baseClasses} ${stateClasses}`}>
       <span className="mr-2 font-mono text-[11px] text-muted">{stamp}</span>
       {entry.kind === "transcript" ? (
-        <span className="text-sm">{(entry.payload as { text: string }).text}</span>
+        <span className="text-sm">
+          {(() => {
+            const line = entry.payload as { text: string; speaker?: string };
+            return (
+              <>
+                {line.speaker && (
+                  <span
+                    className={
+                      line.speaker === "officer"
+                        ? "mr-1.5 font-medium text-accent"
+                        : "mr-1.5 font-medium text-muted"
+                    }
+                  >
+                    {formatSpeaker(line.speaker, officerName)}
+                  </span>
+                )}
+                {line.text}
+              </>
+            );
+          })()}
+        </span>
       ) : (
         <div className="mt-1">
           <GuidanceCard guidance={entry.payload as GuidanceEvent} acknowledgeable={false} />

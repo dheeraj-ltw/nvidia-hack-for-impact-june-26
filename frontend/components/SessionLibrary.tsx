@@ -76,6 +76,7 @@ function SessionCard({ session, onPlay, onRenamed, onDeleted }: SessionCardProps
         </div>
 
         <div className="flex items-center gap-1.5 text-xs text-muted">
+          {session.officer_name && <span>{session.officer_name} · </span>}
           <span>{session.frame_count} frames</span>
           {session.event_count > 0 && <span>· {session.event_count} log entries</span>}
         </div>
