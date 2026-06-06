@@ -13,8 +13,8 @@ class Settings(BaseSettings):
     log_level: str = "info"
     cors_origins: str = "http://localhost:3000"
 
-    # AI provider selection: null (no model), stub (deterministic), live (NIM + ElevenLabs)
-    ai_backend: Literal["null", "stub", "live"] = "null"
+    # AI provider selection: stub (deterministic), live (NIM + ElevenLabs)
+    ai_backend: Literal["stub", "live"] = "stub"
 
     # NVIDIA NIM
     nvidia_api_key: str = ""
@@ -33,7 +33,7 @@ class Settings(BaseSettings):
 
     @property
     def cors_origin_list(self) -> list[str]:
-        return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+        return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
 
 
 @lru_cache

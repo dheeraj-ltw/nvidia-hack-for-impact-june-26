@@ -15,7 +15,7 @@ flowchart TB
         WS["WebSocket session<br/>binary ingest / JSON events"]
         RECORDER["Session recorder<br/>frames + audio + manifest"]
         ORCH["Orchestrator<br/>throttled, drop-if-busy"]
-        AISVC{{"AIService interface<br/>null · stub · live"}}
+        AISVC{{"AIService interface<br/>stub · live"}}
         SESSIONS["Sessions API<br/>list · detail · playback"]
     end
 

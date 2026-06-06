@@ -91,7 +91,7 @@ class SpeechEvent(BaseModel):
 class StatusEvent(BaseModel):
     type: Literal[EventType.STATUS] = EventType.STATUS
     ts: float
-    state: str  # e.g. "connected", "ai_backend:null"
+    state: str  # e.g. "connected", "recording", "ai_backend:stub"
     detail: str | None = None
     session_id: str | None = None
 

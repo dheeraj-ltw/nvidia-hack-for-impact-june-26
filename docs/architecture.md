@@ -30,6 +30,6 @@ The **intended** end-to-end system. Components built today are noted; the rest a
 | WebSocket session + orchestrator | ✅ Built |
 | Session recording → MinIO (frames + audio + manifest) | ✅ Built |
 | Sessions API (list / detail / playback) | ✅ Built |
-| `AIService` interface (null default · stub for testing) | ✅ Built |
+| `AIService` interface (stub default · live pluggable) | ✅ Built |
 | Live AI adapters (STT / VLM / Nemotron+RAG / TTS) | Planned |
 | Reports + webhooks → registry | Planned |

@@ -1,5 +1,4 @@
 from app.ai.base import Frame, ReasoningInput
-from app.ai.null import NullAIService
 from app.ai.stub import StubAIService
 from app.models.events import (
     DetectionEvent,
@@ -40,20 +39,3 @@ async def test_reason_returns_none_without_relevant_objects() -> None:
         ReasoningInput(ts=0.0, transcript="", scene_summary="empty", detections=[])
     )
     assert guidance is None
-
-
-async def test_null_backend_emits_no_ai_events() -> None:
-    """With no model connected the pipeline stays silent — no fake detections or guidance."""
-    pipeline_events: list[PatrolEvent] = []
-
-    async def emit(event: PatrolEvent) -> None:
-        pipeline_events.append(event)
-
-    pipeline = SessionPipeline(ai_service=NullAIService(), emit=emit)
-    await pipeline.handle_frame(Frame(ts=1.0, jpeg=b"x" * 600, width=640, height=480))
-    await pipeline.handle_audio(b"y" * 600, timestamp=1.0)
-
-    # A DetectionEvent with no boxes is still emitted; assert nothing meaningful fires.
-    assert all(not isinstance(event, GuidanceEvent | SpeechEvent) for event in pipeline_events)
-    detections = [event for event in pipeline_events if isinstance(event, DetectionEvent)]
-    assert all(detection.boxes == [] for detection in detections)

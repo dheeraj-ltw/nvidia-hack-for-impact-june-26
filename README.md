@@ -106,9 +106,8 @@ to the officer, with text-to-speech for hands-free use.
 
 > The system is **assistive and human-in-the-loop**. It suggests and cites law; it never decides.
 
-The AI is optional and pluggable. With `AI_BACKEND=null` (the default) **no model is connected**:
-the console shows the live feed and every session is recorded to object storage, ready for a model
-to analyze later. Swapping `AI_BACKEND` adds intelligence without touching the UI.
+The AI is pluggable. Every session is recorded to object storage regardless of backend, so a
+model can analyze it later. Swapping `AI_BACKEND` changes the intelligence without touching the UI.
 
 ## Architecture
 
@@ -118,8 +117,7 @@ Full diagram and component build-status: [docs/architecture.md](docs/architectur
 
 | `AI_BACKEND` | Behavior |
 |--------------|----------|
-| `null` (default) | No model. Live feed + session recording only — no fabricated output. |
-| `stub` | Deterministic local detections/guidance for exercising the event path (no keys). |
+| `stub` (default) | Deterministic local detections/guidance for exercising the event path (no keys). |
 | `live` | NVIDIA NIM (VLM + Nemotron) + ElevenLabs (STT/TTS). |
 
 ## Quick start
@@ -154,7 +152,7 @@ cd frontend && npm install && npm run dev
 | `backend/app/recording/` | Per-session recorder → object storage |
 | `backend/app/storage/` | Async S3/MinIO client |
 | `backend/app/api/sessions.py` | List recorded sessions + media playback |
-| `backend/app/ai/` | `AIService` interface — null / stub / live backends |
+| `backend/app/ai/` | `AIService` interface — stub / live backends |
 | `backend/app/pipeline/` | Orchestrator: frame → AI → events |
 | `frontend/app/` | Live patrol console + recorded-sessions list |
 | `frontend/lib/` | WebSocket client, capture loop, API client, types |
