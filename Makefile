@@ -16,8 +16,12 @@ N  ?= 100
 TEXT  ?= Officer, you have grounds to search under PACE section 1.
 OUT   ?= data/audio/sample.mp3
 AUDIO ?= $(OUT)
+CONV   ?= data/audio/conversation.wav
+REF    ?= data/audio/officer_ref.mp3
+SNR    ?= 15
+OTHERS ?= 3
 
-.PHONY: all data setup scrape corpus generate smoke validate split tts stt clean distclean help
+.PHONY: all data setup scrape corpus generate smoke validate split tts stt identify demo-audio clean distclean help
 
 help:
 	@echo "Targets:"
@@ -31,6 +35,8 @@ help:
 	@echo "  data      run the full pipeline (scrape..split) with N=$(N)"
 	@echo "  tts       text -> speech via ElevenLabs (TEXT=... OUT=...)"
 	@echo "  stt       speech -> text via ElevenLabs (AUDIO=...)"
+	@echo "  demo-audio build a noisy multi-speaker demo (SNR=... OTHERS=1..3)"
+	@echo "  identify  label officer vs person1/2/... in a conversation (CONV=... REF=...)"
 	@echo "  clean     remove generated data (keeps cached scrapes + venv)"
 	@echo "  distclean remove venv, caches and all generated data"
 
@@ -66,6 +72,12 @@ tts:
 
 stt:
 	$(PY) src/audio.py stt "$(AUDIO)"
+
+demo-audio:
+	$(PY) src/make_demo_audio.py --snr-db $(SNR) --num-others $(OTHERS) --out "$(CONV)" --ref "$(REF)"
+
+identify:
+	$(PY) src/speaker_id.py identify --conversation "$(CONV)" --officer "$(REF)"
 
 # Full end-to-end run.
 data: scrape corpus generate validate split
