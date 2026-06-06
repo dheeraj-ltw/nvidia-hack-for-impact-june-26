@@ -125,6 +125,42 @@ def speech_to_text(
     return getattr(result, "text", "") or ""
 
 
+def clone_voice(
+    name: str,
+    files: list[str | os.PathLike[str]],
+    *,
+    description: str | None = None,
+    remove_background_noise: bool = True,
+    client=None,
+) -> dict:
+    """Create an Instant Voice Clone (IVC) from sample recordings of a person.
+
+    `files` are paths to clean, single-speaker clips (mp3/wav/m4a/...); ~1-3 min
+    total is recommended. Returns {"voice_id", "name"} — set the returned
+    voice_id as ELEVENLABS_VOICE_ID (or pass it to text_to_speech(voice_id=...)).
+
+    NB: only clone a voice you have permission to use (ElevenLabs ToS).
+    """
+    if not files:
+        raise ValueError("clone_voice: provide at least one sample audio file")
+
+    client = client or make_elevenlabs_client()
+    handles = [open(pathlib.Path(f), "rb") for f in files]
+    try:
+        voice = client.voices.ivc.create(
+            name=name,
+            files=handles,
+            description=description,
+            remove_background_noise=remove_background_noise,
+        )
+    finally:
+        for h in handles:
+            h.close()
+
+    voice_id = getattr(voice, "voice_id", None) or getattr(voice, "voiceId", None)
+    return {"voice_id": voice_id, "name": getattr(voice, "name", name)}
+
+
 def describe() -> str:
     """One-line summary of the active config, for logging."""
     has_key = bool(os.environ.get("ELEVENLABS_API_KEY"))
@@ -160,6 +196,13 @@ def main() -> None:
     p_stt.add_argument("--model-id", default=None, help="override ELEVENLABS_STT_MODEL")
     p_stt.add_argument("--language-code", default=None, help="ISO language hint, e.g. eng")
 
+    p_clone = sub.add_parser("clone", help="instant-voice-clone from sample recordings")
+    p_clone.add_argument("--name", required=True, help="name for the cloned voice")
+    p_clone.add_argument("files", nargs="+", help="sample audio files (1-3 min total)")
+    p_clone.add_argument("--description", default=None, help="optional voice description")
+    p_clone.add_argument("--keep-noise", action="store_true",
+                         help="do NOT remove background noise from samples")
+
     args = parser.parse_args()
     print(describe())
 
@@ -178,6 +221,15 @@ def main() -> None:
             language_code=args.language_code,
         )
         print(transcript)
+    elif args.command == "clone":
+        result = clone_voice(
+            args.name,
+            args.files,
+            description=args.description,
+            remove_background_noise=not args.keep_noise,
+        )
+        print(f"cloned voice '{result['name']}' -> voice_id={result['voice_id']}")
+        print(f"set ELEVENLABS_VOICE_ID={result['voice_id']} to use it as the default voice")
 
 
 if __name__ == "__main__":
