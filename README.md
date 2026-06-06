@@ -124,13 +124,45 @@ The flow, per-component build status, and how to regenerate the diagram live in
 ## Quick start
 
 ```bash
-cp .env.example .env
-docker compose up --build
+cp .env.example .env          # then add keys / adjust ports (see below)
+docker compose up --build -d  # --build only needed the first time (or after dep changes)
 ```
 
 - Frontend: http://localhost:3000
 - API docs: http://localhost:8000/docs
-- MinIO console: http://localhost:9001 (`minioadmin` / `minioadmin`)
+- MinIO console: http://localhost:9101 (`minioadmin` / `minioadmin`)
+
+After the first build, just start the stack — code changes hot-reload via bind mounts, so you
+**don't** need `--build` again:
+
+```bash
+docker compose up -d          # day-to-day start
+docker compose logs -f        # follow logs
+docker compose down           # stop and remove containers (keeps the minio_data volume)
+```
+
+Only rebuild when dependencies change (`backend/pyproject.toml` or `frontend/package.json`):
+
+```bash
+docker compose up --build -d api   # rebuild just the service that changed
+```
+
+> **Why this matters:** the three services share fixed container names
+> (`<project>-{api,web,minio}-1`), so `up` recreates them in place rather than spawning new ones.
+> Reflexively passing `--build` every run rebuilds the images and leaves dangling `<none>` images
+> behind. To clean those up: `docker image prune -f`.
+
+### Port conflicts
+
+If a host port is already in use (e.g. `bind: address already in use` on 9000), override it in
+`.env` — the container ports are unchanged, so nothing internal breaks:
+
+```bash
+WEB_PORT=3000
+API_PORT=8000
+MINIO_PORT=9100          # MinIO S3 API on the host
+MINIO_CONSOLE_PORT=9101  # MinIO web console on the host
+```
 
 To enable speech, set `AI_BACKEND=live` and add your `ELEVENLABS_API_KEY` (and `ELEVENLABS_VOICE_ID`)
 in `.env` — see [.env.example](.env.example).

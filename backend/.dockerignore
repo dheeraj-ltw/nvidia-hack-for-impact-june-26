@@ -1,0 +1,13 @@
+# Keep the build context small so `COPY . .` doesn't bust the layer cache
+# (and trigger a full rebuild) on every `docker compose up --build`.
+.venv
+venv
+__pycache__
+*.pyc
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.git
+.gitignore
+.env
+*.log
