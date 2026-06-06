@@ -7,3 +7,5 @@ data/corpus/caselaw/*.xml
 data/corpus/police_guidance/*.html
 # keep the directory structure and the small derived/index files
 !data/corpus/**/.gitkeep
+# intermediate per-turn TTS clips from src/make_demo_audio.py
+data/audio/_turns/
