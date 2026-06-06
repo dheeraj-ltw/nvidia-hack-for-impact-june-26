@@ -18,10 +18,23 @@ def session_prefix(session_id: str) -> str:
 
 
 class SessionRecorder:
-    def __init__(self, object_store: ObjectStore, session_id: str, started_at: float) -> None:
+    def __init__(
+        self,
+        object_store: ObjectStore,
+        session_id: str,
+        started_at: float,
+        *,
+        officer_id: str | None = None,
+        officer_name: str | None = None,
+    ) -> None:
         self._store = object_store
         self._started_at = started_at
-        self._manifest = SessionManifest(session_id=session_id, started_at=started_at)
+        self._manifest = SessionManifest(
+            session_id=session_id,
+            started_at=started_at,
+            officer_id=officer_id,
+            officer_name=officer_name,
+        )
         self._audio_buffer = bytearray()
 
     @property
@@ -31,6 +44,10 @@ class SessionRecorder:
     @property
     def frame_count(self) -> int:
         return self._manifest.frame_count
+
+    @property
+    def has_audio(self) -> bool:
+        return self._manifest.has_audio
 
     def _offset(self, timestamp: float) -> float:
         return max(0.0, timestamp - self._started_at)
