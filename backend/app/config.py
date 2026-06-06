@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     elevenlabs_tts_model: str = "eleven_multilingual_v2"
     elevenlabs_stt_model: str = "scribe_v1"
 
+    # Speaker identification: minimum cosine similarity for a voice to count as the officer.
+    speaker_match_threshold: float = 0.70
+
     # Object storage (MinIO / S3) — stores recorded session media + manifests
     s3_endpoint: str = "http://minio:9000"
     s3_access_key: str = "minioadmin"
