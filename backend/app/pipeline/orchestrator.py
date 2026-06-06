@@ -7,10 +7,13 @@ never queue faster than the AI can respond — the realtime loop, not transport,
 
 from __future__ import annotations
 
+import asyncio
 import base64
+import logging
 from collections.abc import Awaitable, Callable
 
 from app.ai.base import AIService, Frame, ReasoningInput
+from app.ai.speaker_id import match_clip
 from app.models.events import (
     DetectionEvent,
     GuidanceEvent,
@@ -18,6 +21,8 @@ from app.models.events import (
     SpeechEvent,
     TranscriptEvent,
 )
+
+logger = logging.getLogger(__name__)
 
 EmitCallback = Callable[[PatrolEvent], Awaitable[None]]
 
@@ -28,12 +33,22 @@ _TRANSCRIPT_CONTEXT_CHARS = 2000
 
 
 class SessionPipeline:
-    def __init__(self, ai_service: AIService, emit: EmitCallback) -> None:
+    def __init__(
+        self,
+        ai_service: AIService,
+        emit: EmitCallback,
+        *,
+        officer_embedding: list[float] | None = None,
+    ) -> None:
         self._ai_service = ai_service
         self._emit = emit
         self._is_analyzing = False
         self._last_analyze_timestamp = 0.0
         self._transcript = ""
+        # When set, each transcribed clip is matched against the officer's enrolled voice to
+        # label the speaker live (officer vs subject). The post-session pass refines this into
+        # consistent officer/person1/person2 numbering across the whole conversation.
+        self._officer_embedding = officer_embedding
 
     async def handle_frame(self, frame: Frame) -> None:
         """Throttled, drop-if-busy frame handling — keeps latency bounded under load."""
@@ -67,9 +82,21 @@ class SessionPipeline:
             return
         if is_final:
             self._transcript += " " + text
+        speaker = await self._label_speaker(audio_chunk)
         await self._emit(
-            TranscriptEvent(ts=timestamp, text=text, speaker="officer", is_final=is_final)
+            TranscriptEvent(ts=timestamp, text=text, speaker=speaker, is_final=is_final)
         )
+
+    async def _label_speaker(self, clip: bytes) -> str:
+        """Live speaker label for a clip: 'officer'/'subject' if enrolled, else 'officer'."""
+        if self._officer_embedding is None:
+            return "officer"  # no enrollment to compare against
+        try:
+            label, _ = await asyncio.to_thread(match_clip, clip, self._officer_embedding)
+        except Exception as error:  # noqa: BLE001 - never let matching break the transcript
+            logger.warning("Live speaker match failed: %s", error)
+            return "unknown"
+        return label
 
     async def _emit_speech(self, guidance: GuidanceEvent) -> None:
         audio_bytes = await self._ai_service.speak(guidance.suggestion)

@@ -9,6 +9,13 @@ interface LogsPanelProps {
   transcript: TranscriptEvent[];
   guidance: GuidanceEvent[];
   active: boolean;
+  officerName?: string | null;
+}
+
+/** Show the officer's name for context, e.g. "officer (PC Taylor)"; pass others through. */
+export function formatSpeaker(speaker: string, officerName?: string | null): string {
+  if (speaker === "officer" && officerName) return `officer (${officerName})`;
+  return speaker;
 }
 
 function SectionHeader({ icon, label, count }: { icon: React.ReactNode; label: string; count?: number }) {
@@ -26,7 +33,7 @@ function SectionHeader({ icon, label, count }: { icon: React.ReactNode; label: s
 }
 
 /** Live logs beside the feed: cited guidance on top, the transcript stream pinned below. */
-export function LogsPanel({ transcript, guidance, active }: LogsPanelProps) {
+export function LogsPanel({ transcript, guidance, active, officerName }: LogsPanelProps) {
   const transcriptScrollRef = useRef<HTMLDivElement | null>(null);
 
   // Auto-scroll the transcript *container only* — never the page (which would yank the
@@ -90,7 +97,13 @@ export function LogsPanel({ transcript, guidance, active }: LogsPanelProps) {
             <div className="mt-auto space-y-1.5 text-sm">
               {transcript.map((line, index) => (
                 <p key={`${line.ts}-${index}`} className="animate-in leading-snug">
-                  <span className="font-medium text-muted">{line.speaker}</span>
+                  <span
+                    className={
+                      line.speaker === "officer" ? "font-medium text-accent" : "font-medium text-muted"
+                    }
+                  >
+                    {formatSpeaker(line.speaker, officerName)}
+                  </span>
                   <span className="text-muted"> · </span>
                   {line.text}
                 </p>

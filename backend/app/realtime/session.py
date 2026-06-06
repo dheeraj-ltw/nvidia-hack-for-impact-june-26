@@ -16,6 +16,8 @@ Server -> client: JSON-encoded PatrolEvent objects (see app.models.events).
 
 from __future__ import annotations
 
+import asyncio
+import logging
 import struct
 import uuid
 
@@ -23,12 +25,32 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from app.ai import get_ai_service
 from app.ai.base import Frame
+from app.ai.speaker_id import warm_up
+from app.api.officers import load_profile
 from app.models.events import GuidanceEvent, PatrolEvent, StatusEvent, TranscriptEvent
+from app.models.officer import OfficerProfile
 from app.pipeline.orchestrator import SessionPipeline
 from app.recording import SessionRecorder
 from app.storage import get_object_store
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter()
+
+# Strong references to in-flight background tasks. asyncio only holds a weak reference to
+# tasks, so without this the post-session pass could be garbage-collected before it finishes.
+_background_tasks: set[asyncio.Task[None]] = set()
+
+
+async def _load_officer(officer_id: str | None) -> OfficerProfile | None:
+    """Best-effort officer lookup — a bad/missing id must not break the patrol."""
+    if not officer_id:
+        return None
+    try:
+        return await load_profile(officer_id)
+    except Exception as error:  # noqa: BLE001 - HTTPException(404) or storage hiccup
+        logger.warning("Could not load officer %s: %s", officer_id, error)
+        return None
 
 MESSAGE_KIND_VIDEO = 0x00
 MESSAGE_KIND_AUDIO = 0x01  # continuous WebM fragment, for the recorded track
@@ -41,6 +63,13 @@ async def patrol_websocket(websocket: WebSocket) -> None:
     await websocket.accept()
     ai_service = get_ai_service()
 
+    # Who is on patrol? (no-auth roster — passed as ?officer_id=... on the WS URL)
+    officer = await _load_officer(websocket.query_params.get("officer_id"))
+    officer_embedding = officer.embedding if officer and officer.embedding else None
+    if officer_embedding:
+        # Preload the voice encoder off the event loop so the first live match isn't slow.
+        await asyncio.to_thread(warm_up)
+
     session_id = uuid.uuid4().hex
     recorder: SessionRecorder | None = None
     last_timestamp = 0.0
@@ -51,7 +80,9 @@ async def patrol_websocket(websocket: WebSocket) -> None:
             recorder.record_event(event)
         await websocket.send_text(event.model_dump_json())
 
-    pipeline = SessionPipeline(ai_service=ai_service, emit=emit)
+    pipeline = SessionPipeline(
+        ai_service=ai_service, emit=emit, officer_embedding=officer_embedding
+    )
 
     try:
         while True:
@@ -65,7 +96,13 @@ async def patrol_websocket(websocket: WebSocket) -> None:
 
             # Start the recording on the first message, once we have a capture clock.
             if recorder is None:
-                recorder = SessionRecorder(get_object_store(), session_id, timestamp)
+                recorder = SessionRecorder(
+                    get_object_store(),
+                    session_id,
+                    timestamp,
+                    officer_id=officer.officer_id if officer else None,
+                    officer_name=officer.name if officer else None,
+                )
                 await emit(
                     StatusEvent(
                         ts=timestamp,
@@ -91,3 +128,19 @@ async def patrol_websocket(websocket: WebSocket) -> None:
     finally:
         if recorder is not None:
             await recorder.finalize(last_timestamp)
+            # If we know the officer and captured audio, refine the stored transcript into a
+            # clean officer/person1/person2 diarization in the background (needs an STT key).
+            if officer_embedding and recorder.has_audio:
+                task = asyncio.create_task(_run_post_session_identify(session_id))
+                _background_tasks.add(task)
+                task.add_done_callback(_background_tasks.discard)
+
+
+async def _run_post_session_identify(session_id: str) -> None:
+    """Background post-session speaker-ID pass; failures are logged, never raised."""
+    from app.api.sessions import run_session_identification
+
+    try:
+        await run_session_identification(session_id)
+    except Exception as error:  # noqa: BLE001 - background task; nothing to surface to
+        logger.warning("Post-session identification failed for %s: %s", session_id, error)
