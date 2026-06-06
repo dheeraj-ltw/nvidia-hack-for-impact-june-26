@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import base64
 
-from app.ai.base import Frame, ReasoningInput
+from app.ai.base import Frame, ReasoningInput, Transcription
 from app.models.events import BoundingBox, GuidanceEvent, LegalCitation, Severity
 
 # A single silent MPEG-1 Layer III frame, so the SpeechEvent path is exercised without TTS.
@@ -40,16 +40,17 @@ def content_hash(data: bytes) -> int:
 class StubAIService:
     """Implements the AIService protocol with deterministic, content-derived output."""
 
-    async def transcribe(self, audio_chunk: bytes) -> tuple[str, bool]:
+    async def transcribe(self, audio_chunk: bytes) -> Transcription:
         if len(audio_chunk) < 256:
-            return "", False
+            return Transcription(text="", is_final=False)
         phrases = [
             "Dispatch, proceeding on foot.",
             "Subject is cooperative.",
             "Requesting backup at this location.",
             "Vehicle plate confirmed.",
         ]
-        return phrases[content_hash(audio_chunk) % len(phrases)], True
+        text = phrases[content_hash(audio_chunk) % len(phrases)]
+        return Transcription(text=text, is_final=True)
 
     async def analyze_frame(self, frame: Frame) -> tuple[list[BoundingBox], str]:
         seed = content_hash(frame.jpeg)

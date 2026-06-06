@@ -19,7 +19,8 @@ import logging
 import httpx
 
 from app.ai import policeai
-from app.ai.base import Frame, ReasoningInput
+from app.ai.base import Frame, ReasoningInput, Transcription
+from app.ai.speaker_id import extract_words
 from app.ai.vlm import VlmCaptioner
 from app.config import get_settings
 from app.models.events import BoundingBox, GuidanceEvent
@@ -47,24 +48,31 @@ class LiveAIService:
             api_key=settings.nebius_api_key,
         )
 
-    async def transcribe(self, audio_chunk: bytes) -> tuple[str, bool]:
+    async def transcribe(self, audio_chunk: bytes) -> Transcription:
         if not self._elevenlabs_key or len(audio_chunk) < 1024:
-            return "", False
+            return Transcription(text="", is_final=False)
         logger.info("→ ElevenLabs STT model=%s (%d bytes)", self._stt_model, len(audio_chunk))
         try:
             async with httpx.AsyncClient(timeout=_REQUEST_TIMEOUT) as client:
                 response = await client.post(
                     f"{_ELEVENLABS_BASE}/speech-to-text",
                     headers={"xi-api-key": self._elevenlabs_key},
-                    data={"model_id": self._stt_model},
+                    # Diarize + word timestamps so the speaker can be labeled from the dominant
+                    # voice's audio alone (see speaker_id.label_dominant_speaker).
+                    data={
+                        "model_id": self._stt_model,
+                        "diarize": "true",
+                        "timestamps_granularity": "word",
+                    },
                     files={"file": ("clip.webm", audio_chunk, "audio/webm")},
                 )
             response.raise_for_status()
-            text = response.json().get("text", "").strip()
-            return text, True
+            payload = response.json()
+            text = (payload.get("text") or "").strip()
+            return Transcription(text=text, is_final=True, words=extract_words(payload))
         except (httpx.HTTPError, ValueError) as error:
             logger.warning("ElevenLabs STT failed: %s", error)
-            return "", False
+            return Transcription(text="", is_final=False)
 
     async def analyze_frame(self, frame: Frame) -> tuple[list[BoundingBox], str]:
         # Caption the frame into a scene summary for the reasoner. Object detection

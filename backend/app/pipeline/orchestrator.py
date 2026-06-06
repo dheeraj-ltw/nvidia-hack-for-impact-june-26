@@ -13,7 +13,7 @@ import logging
 from collections.abc import Awaitable, Callable
 
 from app.ai.base import AIService, Frame, ReasoningInput
-from app.ai.speaker_id import match_clip
+from app.ai.speaker_id import label_dominant_speaker
 from app.models.events import (
     DetectionEvent,
     GuidanceEvent,
@@ -45,9 +45,10 @@ class SessionPipeline:
         self._is_analyzing = False
         self._last_analyze_timestamp = 0.0
         self._transcript = ""
-        # When set, each transcribed clip is matched against the officer's enrolled voice to
-        # label the speaker live (officer vs subject). The post-session pass refines this into
-        # consistent officer/person1/person2 numbering across the whole conversation.
+        # When an officer is enrolled, label each transcribed clip officer-vs-subject live by
+        # matching the clip's dominant diarized voice against this embedding (see
+        # label_dominant_speaker). The post-session pass refines this into consistent
+        # officer/person1/person2 numbering. No enrollment => every clip is the officer.
         self._officer_embedding = officer_embedding
 
     async def handle_frame(self, frame: Frame) -> None:
@@ -102,24 +103,28 @@ class SessionPipeline:
 
     async def handle_audio(self, audio_chunk: bytes, timestamp: float) -> None:
         logger.info("← audio clip ts=%.2f (%d bytes)", timestamp, len(audio_chunk))
-        text, is_final = await self._ai_service.transcribe(audio_chunk)
-        if not text:
+        result = await self._ai_service.transcribe(audio_chunk)
+        if not result.text:
             logger.info("  transcribe → (nothing recognized)")
             return
-        if is_final:
-            self._transcript += " " + text
-        speaker = await self._label_speaker(audio_chunk)
-        logger.info("  transcribe → [%s] %r (final=%s)", speaker, text, is_final)
+        if result.is_final:
+            self._transcript += " " + result.text
+        speaker = await self._label_speaker(audio_chunk, result.words)
+        logger.info("  transcribe → [%s] %r (final=%s)", speaker, result.text, result.is_final)
         await self._emit(
-            TranscriptEvent(ts=timestamp, text=text, speaker=speaker, is_final=is_final)
+            TranscriptEvent(
+                ts=timestamp, text=result.text, speaker=speaker, is_final=result.is_final
+            )
         )
 
-    async def _label_speaker(self, clip: bytes) -> str:
+    async def _label_speaker(self, clip: bytes, words: list[dict]) -> str:
         """Live speaker label for a clip: 'officer'/'subject' if enrolled, else 'officer'."""
         if self._officer_embedding is None:
             return "officer"  # no enrollment to compare against
         try:
-            label, _ = await asyncio.to_thread(match_clip, clip, self._officer_embedding)
+            label, _ = await asyncio.to_thread(
+                label_dominant_speaker, clip, words, self._officer_embedding
+            )
         except Exception as error:  # noqa: BLE001 - never let matching break the transcript
             logger.warning("Live speaker match failed: %s", error)
             return "unknown"

@@ -24,7 +24,7 @@ All functions here are synchronous and CPU/IO-bound; async callers should wrap t
 Public API:
     embed_reference(audio_bytes) -> list[float]          # enrollment
     warm_up()                                            # preload the encoder
-    match_clip(clip_bytes, ref_embedding) -> (label, similarity)   # live officer-vs-other
+    label_dominant_speaker(clip_bytes, words, ref_embedding)  # live officer-vs-subject, per clip
     transcribe_with_speakers(audio_bytes) -> dict        # diarized words + speakers
     identify_officer(conversation_bytes, ref_embedding) -> dict    # post-session pass
 """
@@ -142,19 +142,77 @@ def _cosine(a: np.ndarray, b: np.ndarray) -> float:
     return float(np.dot(a, b))
 
 
-def match_clip(clip: bytes, ref_embedding: list[float]) -> tuple[str, float]:
-    """Live officer-vs-other label for a single short clip.
+def extract_words(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    """Pull diarized word entries ({text, start, end, speaker_id}) from an STT response.
 
-    Returns ("officer", sim) if the clip's voice matches the officer reference above the
-    configured threshold, else ("subject", sim). On any decode/embed failure returns
-    ("unknown", -1.0) so the realtime loop degrades gracefully.
+    Skips spacing/audio-event tokens and any word missing a speaker or start time, so callers
+    get clean per-word speaker spans. Shared by the live transcribe path and the post-session
+    diarization so both interpret ElevenLabs' word list identically.
     """
+    words: list[dict[str, Any]] = []
+    for w in payload.get("words") or []:
+        if w.get("type", "word") != "word":
+            continue
+        speaker, start = w.get("speaker_id"), w.get("start")
+        if speaker is None or start is None:
+            continue
+        end = w.get("end")
+        words.append(
+            {
+                "text": w.get("text", ""),
+                "start": float(start),
+                "end": float(end if end is not None else start),
+                "speaker_id": speaker,
+            }
+        )
+    return words
+
+
+def label_dominant_speaker(
+    clip: bytes, words: list[dict[str, Any]], ref_embedding: list[float]
+) -> tuple[str, float]:
+    """Label a live clip 'officer'/'subject' from its diarized words + the officer reference.
+
+    A naive "embed the whole clip, compare to the officer" check fails on real audio: a 4 s
+    window often spans more than one voice, so the embedding is a blur of speakers and the
+    cosine lands in a muddy middle band — non-officer clips read as the officer. The post-
+    session pass avoids this by embedding each *diarized* speaker separately, where the officer
+    vs. others gap is wide and clean.
+
+    This applies that same idea per clip: ElevenLabs already diarizes the clip (`words`), so we
+    isolate the dominant speaker's word-slices, embed only those, and match the resulting
+    single-voice embedding against the officer reference at `speaker_match_threshold`. Empty
+    `words` (a backend that doesn't diarize) or any decode/embed failure degrades to 'officer'
+    so the transcript still flows; the post-session pass relabels everything precisely later.
+    """
+    if not words:
+        return "officer", -1.0
     try:
-        emb = _embed_wav(decode_to_wav16k(clip))
+        wav = decode_to_wav16k(clip)
     except SpeakerIdError:
-        return "unknown", -1.0
+        return "officer", -1.0
+
+    # Dominant speaker = the one with the most speaking time in this clip.
+    speaking_time: dict[str, float] = {}
+    for w in words:
+        speaking_time[w["speaker_id"]] = (
+            speaking_time.get(w["speaker_id"], 0.0) + (w["end"] - w["start"])
+        )
+    dominant = max(speaking_time, key=lambda spk: speaking_time[spk])
+
+    chunks = [
+        wav[int(w["start"] * SAMPLE_RATE) : int(w["end"] * SAMPLE_RATE)]
+        for w in words
+        if w["speaker_id"] == dominant
+    ]
+    chunks = [c for c in chunks if len(c)]
+    if not chunks:
+        return "officer", -1.0
+
+    emb = _embed_wav(np.concatenate(chunks))
     if emb is None:
-        return "unknown", -1.0
+        return "officer", -1.0
+
     sim = _cosine(np.asarray(ref_embedding, dtype=np.float32), emb)
     threshold = get_settings().speaker_match_threshold
     return ("officer" if sim >= threshold else "subject"), sim
@@ -188,23 +246,7 @@ def transcribe_with_speakers(audio: bytes) -> dict[str, Any]:
     except (httpx.HTTPError, ValueError) as error:
         raise SpeakerIdError(f"ElevenLabs diarized STT failed: {error}") from error
 
-    words: list[dict[str, Any]] = []
-    for w in payload.get("words") or []:
-        if w.get("type", "word") != "word":
-            continue
-        speaker = w.get("speaker_id")
-        start = w.get("start")
-        if speaker is None or start is None:
-            continue
-        end = w.get("end")
-        words.append(
-            {
-                "text": w.get("text", ""),
-                "start": float(start),
-                "end": float(end if end is not None else start),
-                "speaker_id": speaker,
-            }
-        )
+    words = extract_words(payload)
 
     speakers: list[str] = []
     for w in words:
