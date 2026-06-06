@@ -1,0 +1,54 @@
+{
+  "_meta": {
+    "title": "Curated reference: key provisions of the PACE Codes of Practice (England & Wales)",
+    "licence": "Open Government Licence v3.0 (Crown copyright). Summaries of published PACE Codes A, C and G.",
+    "note": "Hand-curated anchors so generation always has reliable, real Code paragraph references. Verify against the live Codes on GOV.UK before operational use."
+  },
+  "provisions": [
+    {
+      "citation": "PACE Code A, para 2.2",
+      "topic": "stop and search",
+      "text": "Reasonable grounds for suspicion depend on the circumstances in each case. There must be an objective basis for that suspicion based on facts, information and/or intelligence which are relevant to the likelihood of finding an article of a certain kind. Reasonable suspicion can never be supported on the basis of personal factors alone."
+    },
+    {
+      "citation": "PACE Code A, para 2.2(b)",
+      "topic": "stop and search",
+      "text": "Reasonable suspicion must never be based on generalisations or stereotyping. A person's race, age, appearance, religion, or the fact they are known to have a previous conviction, cannot be used alone or in combination as the reason for searching that person."
+    },
+    {
+      "citation": "PACE Code A, para 3.8 (GOWISELY)",
+      "topic": "stop and search",
+      "text": "Before any search of a detained person or attended vehicle the officer must take reasonable steps to give: their name and station, the object and grounds of the search, the legal power being used, and that the person is entitled to a copy of the search record. The information is commonly remembered by the mnemonic GOWISELY (Grounds, Object, Warrant card, Identity, Station, Entitlement to a record, Legal power, You are detained for a search)."
+    },
+    {
+      "citation": "PACE Code A, para 2.14A-2.14B",
+      "topic": "stop and search (no suspicion)",
+      "text": "Powers to search without reasonable suspicion (such as section 60 of the Criminal Justice and Public Order Act 1994) require a prior authorisation by an officer of at least inspector rank who reasonably believes incidents involving serious violence may take place, or that people are carrying dangerous instruments or offensive weapons, in the locality. The power is limited in time and place."
+    },
+    {
+      "citation": "PACE Code C, para 10.5 (the caution)",
+      "topic": "caution / right to silence",
+      "text": "The caution which must be given on arrest, or before questioning if not already given, is: 'You do not have to say anything. But it may harm your defence if you do not mention when questioned something which you later rely on in court. Anything you do say may be given in evidence.'"
+    },
+    {
+      "citation": "PACE Code C, para 3.1",
+      "topic": "rights in detention",
+      "text": "When a person is brought to a police station under arrest, the custody officer must tell them clearly of their ongoing rights: the right to have someone informed of their arrest (section 56 PACE), the right to consult privately with a solicitor and that free independent legal advice is available (section 58 PACE), and the right to consult the Codes of Practice."
+    },
+    {
+      "citation": "PACE Code C, para 6.1",
+      "topic": "right to legal advice",
+      "text": "All detainees must be informed that they may at any time consult and communicate privately with a solicitor, whether in person, in writing or by telephone, and that free independent legal advice is available."
+    },
+    {
+      "citation": "PACE Code G, para 2.4-2.9 (necessity test)",
+      "topic": "arrest",
+      "text": "A lawful arrest under section 24 PACE requires two elements: (i) the officer's reasonable grounds for suspecting the person is involved in a criminal offence, and (ii) the officer's reasonable grounds for believing that the person's arrest is necessary. The necessity criteria include ascertaining a name or address, preventing physical harm or loss/damage to property, protecting a child or vulnerable person, allowing the prompt and effective investigation of the offence, and preventing prosecution being hindered by the person's disappearance."
+    },
+    {
+      "citation": "PACE Code C, para 11.1A",
+      "topic": "interview",
+      "text": "An interview is the questioning of a person regarding their involvement or suspected involvement in a criminal offence which, under the caution requirements, must be carried out under caution. Questioning to establish identity, ownership of a vehicle, or in furtherance of a search is not an interview."
+    }
+  ]
+}

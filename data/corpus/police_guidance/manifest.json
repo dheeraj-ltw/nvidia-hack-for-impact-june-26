@@ -1,0 +1,16 @@
+[
+  {
+    "slug": "app_landing",
+    "title": "College of Policing: Authorised Professional Practice (landing)",
+    "url": "https://www.college.police.uk/app",
+    "file": "app_landing.html",
+    "licence": "Open Government Licence v3.0 (Crown copyright)"
+  },
+  {
+    "slug": "govuk_pace_codes",
+    "title": "GOV.UK: PACE codes of practice",
+    "url": "https://www.gov.uk/guidance/police-and-criminal-evidence-act-1984-pace-codes-of-practice",
+    "file": "govuk_pace_codes.html",
+    "licence": "Open Government Licence v3.0 (Crown copyright)"
+  }
+]
