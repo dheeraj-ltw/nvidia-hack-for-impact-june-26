@@ -12,7 +12,12 @@
 PY := .venv/bin/python
 N  ?= 100
 
-.PHONY: all data setup scrape corpus generate smoke validate split clean distclean help
+# ElevenLabs voice pipeline knobs (override on the command line).
+TEXT  ?= Officer, you have grounds to search under PACE section 1.
+OUT   ?= data/audio/sample.mp3
+AUDIO ?= $(OUT)
+
+.PHONY: all data setup scrape corpus generate smoke validate split tts stt clean distclean help
 
 help:
 	@echo "Targets:"
@@ -24,6 +29,8 @@ help:
 	@echo "  validate  schema / jurisdiction / citation / dedupe checks"
 	@echo "  split     publish train/val + dataset.jsonl to training_data/"
 	@echo "  data      run the full pipeline (scrape..split) with N=$(N)"
+	@echo "  tts       text -> speech via ElevenLabs (TEXT=... OUT=...)"
+	@echo "  stt       speech -> text via ElevenLabs (AUDIO=...)"
 	@echo "  clean     remove generated data (keeps cached scrapes + venv)"
 	@echo "  distclean remove venv, caches and all generated data"
 
@@ -52,6 +59,13 @@ validate:
 
 split:
 	$(PY) src/split_dataset.py
+
+# ElevenLabs voice pipeline (needs ELEVENLABS_API_KEY in .env).
+tts:
+	$(PY) src/audio.py tts "$(TEXT)" --out "$(OUT)"
+
+stt:
+	$(PY) src/audio.py stt "$(AUDIO)"
 
 # Full end-to-end run.
 data: scrape corpus generate validate split
