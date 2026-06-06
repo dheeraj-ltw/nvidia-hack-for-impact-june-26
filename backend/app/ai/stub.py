@@ -67,7 +67,9 @@ class StubAIService:
                     h=0.2 + ((seed >> index) % 25) / 100,
                 )
             )
-        summary = f"{detection_count} object(s) in view: " + ", ".join(b.label for b in boxes)
+        summary = f"{detection_count} object(s) in view: " + ", ".join(
+            box.label for box in boxes
+        )
         return boxes, summary
 
     async def reason(self, context: ReasoningInput) -> GuidanceEvent | None:

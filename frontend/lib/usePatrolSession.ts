@@ -51,7 +51,7 @@ function captureClockSeconds(): number {
 export function usePatrolSession() {
   const [state, setState] = useState<PatrolState>(INITIAL);
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const wsRef = useRef<WebSocket | null>(null);
+  const socketRef = useRef<WebSocket | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const frameTimerRef = useRef<number | null>(null);
@@ -89,8 +89,8 @@ export function usePatrolSession() {
 
   const sendFrame = useCallback(() => {
     const video = videoRef.current;
-    const ws = wsRef.current;
-    if (!video || !ws || ws.readyState !== WebSocket.OPEN || video.videoWidth === 0) return;
+    const socket = socketRef.current;
+    if (!video || !socket || socket.readyState !== WebSocket.OPEN || video.videoWidth === 0) return;
 
     if (!canvasRef.current) canvasRef.current = document.createElement("canvas");
     const canvas = canvasRef.current;
@@ -102,9 +102,9 @@ export function usePatrolSession() {
 
     canvas.toBlob(
       async (blob) => {
-        if (!blob || ws.readyState !== WebSocket.OPEN) return;
+        if (!blob || socket.readyState !== WebSocket.OPEN) return;
         const bytes = new Uint8Array(await blob.arrayBuffer());
-        ws.send(encodeVideo(captureClockSeconds(), canvas.width, canvas.height, bytes));
+        socket.send(encodeVideo(captureClockSeconds(), canvas.width, canvas.height, bytes));
         setState((prev) => ({ ...prev, framesSent: prev.framesSent + 1 }));
       },
       "image/jpeg",
@@ -119,14 +119,14 @@ export function usePatrolSession() {
       recorderRef.current.stop();
     }
     recorderRef.current = null;
-    wsRef.current?.close();
-    wsRef.current = null;
+    socketRef.current?.close();
+    socketRef.current = null;
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
     setState((prev) => ({ ...prev, conn: "closed" }));
   }, []);
 
-  const startAudioRecorder = useCallback((stream: MediaStream, ws: WebSocket) => {
+  const startAudioRecorder = useCallback((stream: MediaStream, socket: WebSocket) => {
     const audioTracks = stream.getAudioTracks();
     if (audioTracks.length === 0 || typeof MediaRecorder === "undefined") return;
 
@@ -134,9 +134,9 @@ export function usePatrolSession() {
       mimeType: "audio/webm",
     });
     recorder.ondataavailable = async (recorderEvent) => {
-      if (recorderEvent.data.size === 0 || ws.readyState !== WebSocket.OPEN) return;
+      if (recorderEvent.data.size === 0 || socket.readyState !== WebSocket.OPEN) return;
       const bytes = new Uint8Array(await recorderEvent.data.arrayBuffer());
-      ws.send(encodeAudio(captureClockSeconds(), bytes));
+      socket.send(encodeAudio(captureClockSeconds(), bytes));
     };
     recorder.start(AUDIO_CHUNK_MS);
     recorderRef.current = recorder;
@@ -166,19 +166,19 @@ export function usePatrolSession() {
       await videoRef.current.play().catch(() => {});
     }
 
-    const ws = new WebSocket(`${WS_BASE}/ws/patrol`);
-    ws.binaryType = "arraybuffer";
-    wsRef.current = ws;
-    ws.onopen = () => {
+    const socket = new WebSocket(`${WS_BASE}/ws/patrol`);
+    socket.binaryType = "arraybuffer";
+    socketRef.current = socket;
+    socket.onopen = () => {
       setState((prev) => ({ ...prev, conn: "live", error: null }));
       frameTimerRef.current = window.setInterval(sendFrame, FRAME_INTERVAL_MS);
-      startAudioRecorder(stream, ws);
+      startAudioRecorder(stream, socket);
     };
-    ws.onmessage = (messageEvent) =>
+    socket.onmessage = (messageEvent) =>
       handleEvent(JSON.parse(messageEvent.data) as PatrolEvent);
-    ws.onerror = () =>
+    socket.onerror = () =>
       setState((prev) => ({ ...prev, conn: "error", error: "Connection to the server failed." }));
-    ws.onclose = () =>
+    socket.onclose = () =>
       setState((prev) => (prev.conn === "error" ? prev : { ...prev, conn: "closed" }));
   }, [handleEvent, sendFrame, startAudioRecorder]);
 
