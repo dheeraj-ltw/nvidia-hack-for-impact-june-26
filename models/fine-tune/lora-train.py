@@ -85,6 +85,7 @@ import math
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import torch
@@ -162,6 +163,10 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--merge_only", action="store_true",
                    help="Skip training. Merge an existing adapter (from --adapter_path "
                         "or --output_dir) and optionally convert to GGUF (--to_gguf).")
+    p.add_argument("--merge_device", default="auto", choices=["auto", "cuda", "cpu"],
+                   help="Device used for the LoRA merge. 'auto' uses the GPU when "
+                        "available (much faster on DGX Spark's unified memory); "
+                        "'cpu' is the safe fallback but very slow for a 49B model.")
     p.add_argument("--to_gguf", action="store_true",
                    help="After merging, convert the bf16 model to GGUF for llama.cpp. "
                         "Requires --llama_cpp_dir. Implies --merge_and_save.")
@@ -514,25 +519,43 @@ def _merge_and_save(args: argparse.Namespace):
         sys.exit(f"Adapter path not found: {adapter_path}")
 
     merged_dir = adapter_path.rstrip("/") + "-merged"
-    print(f"Merging LoRA ({adapter_path}) into base weights → {merged_dir}")
 
-    # Merge on CPU: the bf16 49B base is ~98 GB. Loading it on the GPU via
-    # device_map="auto" risks OOM/offload; merging in the unified host RAM is
-    # safe and the result is identical. trust_remote_code is REQUIRED because
-    # the base is a custom DeciLM architecture.
+    # Pick the merge device. On DGX Spark the 128 GB unified pool fits the ~98 GB
+    # bf16 model, and a GPU merge is FAR faster than CPU (CPU bf16 matmul is very
+    # slow — that is why a CPU merge looks "stuck" after the shards finish
+    # loading: merge_and_unload() and save_pretrained() print no progress bar).
+    merge_device = args.merge_device
+    if merge_device == "auto":
+        merge_device = "cuda" if torch.cuda.is_available() else "cpu"
+    device_map = {"": 0} if merge_device == "cuda" else "cpu"
+
+    print(f"Merging LoRA ({adapter_path}) into base weights → {merged_dir}")
+    print(f"  merge device: {merge_device}  (override with --merge_device cpu|cuda)")
+
+    # trust_remote_code is REQUIRED because the base is a custom DeciLM arch.
+    t0 = time.time()
+    print("  [1/3] loading base + adapter (~98 GB bf16) …", flush=True)
     merged_model = AutoPeftModelForCausalLM.from_pretrained(
         adapter_path,
-        device_map="cpu",
+        device_map=device_map,
         torch_dtype=torch.bfloat16,
         low_cpu_mem_usage=True,
         trust_remote_code=True,
         token=args.hf_token or None,
     )
-    merged_model = merged_model.merge_and_unload()
-    merged_model.save_pretrained(merged_dir, safe_serialization=True)
+    print(f"        done in {time.time() - t0:.0f}s", flush=True)
 
+    t0 = time.time()
+    print("  [2/3] merging adapter weights (no progress bar; please wait) …", flush=True)
+    merged_model = merged_model.merge_and_unload()
+    print(f"        done in {time.time() - t0:.0f}s", flush=True)
+
+    t0 = time.time()
+    print(f"  [3/3] writing merged model (~98 GB, sharded) to {merged_dir} …", flush=True)
+    merged_model.save_pretrained(merged_dir, safe_serialization=True, max_shard_size="5GB")
     tokenizer = load_tokenizer(adapter_path, args.revision, args.hf_token)
     tokenizer.save_pretrained(merged_dir)
+    print(f"        done in {time.time() - t0:.0f}s", flush=True)
 
     print(f"Merged bf16 model saved to {merged_dir}")
     print("Next step: convert to GGUF for llama.cpp (see _merge_and_save docstring), "
