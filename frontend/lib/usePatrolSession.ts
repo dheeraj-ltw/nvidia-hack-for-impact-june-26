@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { encodeAudio, encodeVideo } from "./protocol";
+import { encodeAudio, encodeAudioClip, encodeVideo } from "./protocol";
 import type {
   BoundingBox,
   GuidanceEvent,
@@ -11,7 +11,8 @@ import type {
 
 const WS_BASE = process.env.NEXT_PUBLIC_WS_BASE ?? "ws://localhost:8000";
 const FRAME_INTERVAL_MS = 500; // ~2 fps — matches the backend analysis cadence
-const AUDIO_CHUNK_MS = 1000; // emit one audio blob per second
+const AUDIO_CHUNK_MS = 1000; // continuous fragment cadence, for the recorded track
+const STT_CLIP_MS = 4000; // each complete clip sent to speech-to-text spans this long
 const JPEG_QUALITY = 0.6;
 
 export type ConnState = "idle" | "connecting" | "live" | "closed" | "error";
@@ -56,6 +57,8 @@ export function usePatrolSession() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const frameTimerRef = useRef<number | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
+  const clipRecorderRef = useRef<MediaRecorder | null>(null);
+  const clipTimerRef = useRef<number | null>(null);
   const ttsAudioRef = useRef<HTMLAudioElement | null>(null);
   const mutedRef = useRef(false);
 
@@ -112,13 +115,18 @@ export function usePatrolSession() {
     );
   }, []);
 
+  const stopRecorder = (ref: React.MutableRefObject<MediaRecorder | null>) => {
+    if (ref.current && ref.current.state !== "inactive") ref.current.stop();
+    ref.current = null;
+  };
+
   const stop = useCallback(() => {
     if (frameTimerRef.current) window.clearInterval(frameTimerRef.current);
     frameTimerRef.current = null;
-    if (recorderRef.current && recorderRef.current.state !== "inactive") {
-      recorderRef.current.stop();
-    }
-    recorderRef.current = null;
+    if (clipTimerRef.current) window.clearInterval(clipTimerRef.current);
+    clipTimerRef.current = null;
+    stopRecorder(recorderRef);
+    stopRecorder(clipRecorderRef);
     socketRef.current?.close();
     socketRef.current = null;
     streamRef.current?.getTracks().forEach((track) => track.stop());
@@ -126,20 +134,49 @@ export function usePatrolSession() {
     setState((prev) => ({ ...prev, conn: "closed" }));
   }, []);
 
-  const startAudioRecorder = useCallback((stream: MediaStream, socket: WebSocket) => {
+  /**
+   * Two audio paths from one mic:
+   *  - a continuous recorder emits 1s WebM fragments for the stored track;
+   *  - a clip recorder records a fresh, *complete* WebM every few seconds for speech-to-text,
+   *    since a partial fragment is not independently decodable by the STT API.
+   */
+  const startAudioRecorders = useCallback((stream: MediaStream, socket: WebSocket) => {
     const audioTracks = stream.getAudioTracks();
     if (audioTracks.length === 0 || typeof MediaRecorder === "undefined") return;
+    const audioStream = () => new MediaStream(audioTracks);
 
-    const recorder = new MediaRecorder(new MediaStream(audioTracks), {
-      mimeType: "audio/webm",
-    });
-    recorder.ondataavailable = async (recorderEvent) => {
-      if (recorderEvent.data.size === 0 || socket.readyState !== WebSocket.OPEN) return;
-      const bytes = new Uint8Array(await recorderEvent.data.arrayBuffer());
+    const continuous = new MediaRecorder(audioStream(), { mimeType: "audio/webm" });
+    continuous.ondataavailable = async (event) => {
+      if (event.data.size === 0 || socket.readyState !== WebSocket.OPEN) return;
+      const bytes = new Uint8Array(await event.data.arrayBuffer());
       socket.send(encodeAudio(captureClockSeconds(), bytes));
     };
-    recorder.start(AUDIO_CHUNK_MS);
-    recorderRef.current = recorder;
+    continuous.start(AUDIO_CHUNK_MS);
+    recorderRef.current = continuous;
+
+    // Restart the clip recorder on an interval so each onstop yields a complete WebM file.
+    const recordOneClip = () => {
+      if (socket.readyState !== WebSocket.OPEN) return;
+      const clip = new MediaRecorder(audioStream(), { mimeType: "audio/webm" });
+      const parts: Blob[] = [];
+      clip.ondataavailable = (event) => {
+        if (event.data.size > 0) parts.push(event.data);
+      };
+      clip.onstop = async () => {
+        const blob = new Blob(parts, { type: "audio/webm" });
+        if (blob.size === 0 || socket.readyState !== WebSocket.OPEN) return;
+        const bytes = new Uint8Array(await blob.arrayBuffer());
+        socket.send(encodeAudioClip(captureClockSeconds(), bytes));
+      };
+      clipRecorderRef.current = clip;
+      clip.start();
+      window.setTimeout(() => {
+        if (clip.state !== "inactive") clip.stop();
+      }, STT_CLIP_MS);
+    };
+
+    recordOneClip();
+    clipTimerRef.current = window.setInterval(recordOneClip, STT_CLIP_MS);
   }, []);
 
   const start = useCallback(async () => {
@@ -172,7 +209,7 @@ export function usePatrolSession() {
     socket.onopen = () => {
       setState((prev) => ({ ...prev, conn: "live", error: null }));
       frameTimerRef.current = window.setInterval(sendFrame, FRAME_INTERVAL_MS);
-      startAudioRecorder(stream, socket);
+      startAudioRecorders(stream, socket);
     };
     socket.onmessage = (messageEvent) =>
       handleEvent(JSON.parse(messageEvent.data) as PatrolEvent);
@@ -180,7 +217,7 @@ export function usePatrolSession() {
       setState((prev) => ({ ...prev, conn: "error", error: "Connection to the server failed." }));
     socket.onclose = () =>
       setState((prev) => (prev.conn === "error" ? prev : { ...prev, conn: "closed" }));
-  }, [handleEvent, sendFrame, startAudioRecorder]);
+  }, [handleEvent, sendFrame, startAudioRecorders]);
 
   const toggleMute = useCallback(() => {
     mutedRef.current = !mutedRef.current;

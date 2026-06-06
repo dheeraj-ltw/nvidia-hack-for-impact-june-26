@@ -1,12 +1,13 @@
 // Encodes outbound binary messages matching backend/app/realtime/session.py.
-//   byte 0       : messageKind (0 = video JPEG, 1 = audio)
+//   byte 0       : messageKind (0 = video, 1 = audio chunk, 2 = audio clip)
 //   bytes 1..8   : float64 BE capture timestamp (seconds)
 //   bytes 9..10  : uint16 width   (video only)
 //   bytes 11..12 : uint16 height  (video only)
 //   bytes 13..   : payload
 
 export const MESSAGE_KIND_VIDEO = 0x00;
-export const MESSAGE_KIND_AUDIO = 0x01;
+export const MESSAGE_KIND_AUDIO = 0x01; // continuous fragment, for the recorded track
+export const MESSAGE_KIND_AUDIO_CLIP = 0x02; // complete WebM file, for speech-to-text
 const HEADER_LENGTH = 1 + 8 + 2 + 2;
 
 function encodeMessage(
@@ -35,6 +36,10 @@ export function encodeVideo(
   return encodeMessage(MESSAGE_KIND_VIDEO, timestamp, width, height, jpeg);
 }
 
-export function encodeAudio(timestamp: number, pcm: Uint8Array): ArrayBuffer {
-  return encodeMessage(MESSAGE_KIND_AUDIO, timestamp, 0, 0, pcm);
+export function encodeAudio(timestamp: number, webmChunk: Uint8Array): ArrayBuffer {
+  return encodeMessage(MESSAGE_KIND_AUDIO, timestamp, 0, 0, webmChunk);
+}
+
+export function encodeAudioClip(timestamp: number, webmClip: Uint8Array): ArrayBuffer {
+  return encodeMessage(MESSAGE_KIND_AUDIO_CLIP, timestamp, 0, 0, webmClip);
 }

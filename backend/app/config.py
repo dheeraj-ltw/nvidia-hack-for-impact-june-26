@@ -21,9 +21,11 @@ class Settings(BaseSettings):
     nvidia_base_url: str = "https://integrate.api.nvidia.com/v1"
     nemotron_model: str = "nvidia/llama-3.1-nemotron-70b-instruct"
 
-    # ElevenLabs
+    # ElevenLabs — speech-to-text + text-to-speech
     elevenlabs_api_key: str = ""
     elevenlabs_voice_id: str = ""
+    elevenlabs_tts_model: str = "eleven_multilingual_v2"
+    elevenlabs_stt_model: str = "scribe_v1"
 
     # Object storage (MinIO / S3) — stores recorded session media + manifests
     s3_endpoint: str = "http://minio:9000"

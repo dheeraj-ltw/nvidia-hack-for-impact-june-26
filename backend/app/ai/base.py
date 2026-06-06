@@ -1,8 +1,7 @@
 """The pluggable AI boundary.
 
 Everything model-related lives behind `AIService`. Selecting `AI_BACKEND` swaps the
-implementation (null / stub / live NVIDIA NIM + ElevenLabs) with no changes to the
-pipeline or UI.
+implementation (stub / live NVIDIA NIM + ElevenLabs) with no changes to the pipeline or UI.
 """
 
 from __future__ import annotations
