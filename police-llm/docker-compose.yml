@@ -4,6 +4,7 @@ services:
       context: .
       args:
         CUDA_ARCH: "${CUDA_ARCH:-121}"
+        BUILD_JOBS: "${BUILD_JOBS:-2}"
     image: police-llm:latest
     env_file: .env
     # `deploy.resources` is ignored outside Docker Swarm — use `gpus` instead.

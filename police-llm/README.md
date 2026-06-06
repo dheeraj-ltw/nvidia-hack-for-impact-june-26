@@ -145,6 +145,29 @@ Use the service name as the host: `http://police-llm:8000/v1`.
 
 ## Troubleshooting
 
+### Docker build: `rpc error: code = Unavailable desc = error reading from server: EOF`
+
+This is **not** a Dockerfile syntax error. BuildKit lost contact with the Docker
+daemon — usually because the daemon was **OOM-killed** while compiling
+`llama-cpp-python` (CUDA + ninja uses a lot of RAM).
+
+**Try in order:**
+
+```bash
+# 1. Use fewer parallel compile jobs (add to .env: BUILD_JOBS=1)
+BUILD_JOBS=1 docker compose build --progress=plain
+
+# 2. Skip --no-cache if you already built successfully once (reuses layers)
+docker compose build
+
+# 3. Check host OOM / disk on the Spark
+dmesg | tail -30 | grep -i -E 'oom|killed'
+df -h
+docker system df
+```
+
+The compile step takes **10–30+ minutes** on aarch64; do not interrupt it.
+
 ### Docker build: `libcuda.so.1 not found` / `undefined reference to cuMemCreate`
 
 The NVIDIA **driver** is not present during `docker build` (only at runtime with

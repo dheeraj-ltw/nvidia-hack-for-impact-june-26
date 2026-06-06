@@ -16,6 +16,10 @@ ARG CUDA_IMAGE=nvidia/cuda:13.0.0-devel-ubuntu24.04
 FROM ${CUDA_IMAGE}
 
 ARG CUDA_ARCH=121
+# Parallel compile jobs during llama-cpp-python build. Lower = less RAM, slower.
+# If `docker build` dies with "rpc error ... EOF", the daemon was likely OOM-killed
+# during the CUDA compile — retry with BUILD_JOBS=1.
+ARG BUILD_JOBS=2
 # Override to "" for a CPU-only build.
 # GGML_CUDA_NO_VMM=on  — skip linking libcuda.so (VMM driver API); fixes Docker
 #   build linker errors (cuMemCreate etc.) when no host driver is present.
@@ -65,14 +69,18 @@ ENV LIBRARY_PATH=/usr/local/cuda/lib64/stubs:/usr/local/cuda/targets/sbsa-linux/
 
 # Compile llama-cpp-python against CUDA for the target arch.
 ENV CMAKE_ARGS="${LLAMA_CMAKE_ARGS}" \
-    FORCE_CMAKE=1
+    FORCE_CMAKE=1 \
+    MAX_JOBS=${BUILD_JOBS} \
+    CMAKE_BUILD_PARALLEL_LEVEL=${BUILD_JOBS}
 COPY requirements.txt .
+# Install lightweight deps first so a failed llama compile does not re-download them.
+RUN pip install --no-cache-dir fastapi "uvicorn[standard]" pydantic
 RUN if [ -n "${LLAMA_CMAKE_ARGS}" ]; then \
-      echo "Building llama-cpp-python with CMAKE_ARGS=${CMAKE_ARGS}"; \
+      echo "Building llama-cpp-python (MAX_JOBS=${MAX_JOBS}) CMAKE_ARGS=${CMAKE_ARGS}"; \
     else \
-      echo "Building llama-cpp-python (CPU-only, no CMAKE_ARGS)"; \
+      echo "Building llama-cpp-python CPU-only (MAX_JOBS=${MAX_JOBS})"; \
     fi \
-    && pip install -r requirements.txt
+    && pip install --no-cache-dir "llama-cpp-python>=0.3.2"
 
 COPY app ./app
 
@@ -80,8 +88,8 @@ COPY app ./app
 ENV MODEL_PATH=/models/model.gguf \
     MODEL_NAME=policeai \
     N_GPU_LAYERS=-1 \
-    N_CTX=8192 \
-    N_BATCH=512 \
+    N_CTX=4096 \
+    N_BATCH=256 \
     HOST=0.0.0.0 \
     PORT=8000
 
