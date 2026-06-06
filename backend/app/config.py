@@ -16,17 +16,16 @@ class Settings(BaseSettings):
     # AI provider selection: stub (deterministic), live (NIM + ElevenLabs)
     ai_backend: Literal["stub", "live"] = "stub"
 
-    # NVIDIA NIM (vision model lands in a separate PR; kept for that integration)
-    nvidia_api_key: str = ""
-    nvidia_base_url: str = "https://integrate.api.nvidia.com/v1"
-    nemotron_model: str = "nvidia/llama-3.1-nemotron-70b-instruct"
-
-    # Nebius Token Factory — hosted Qwen2.5-VL. Powers live scene captioning (the
-    # Video→VLM→scene-summary branch) when AI_BACKEND=live. Leave nebius_api_key blank to
-    # skip vision: analyze_frame then degrades to no summary and the reasoner runs on audio.
+    # Nebius Token Factory — the single hosted-model endpoint, used for two calls:
+    #   1. nebius_vlm_model (Qwen2.5-VL) captions a frame into a scene summary, and
+    #   2. nemotron_model composes that summary + transcript into the SCENE CARD
+    #      (see app.ai.nemotron) before the PoliceAI reasoner runs.
+    # Both share nebius_api_key/nebius_base_url. Leave nebius_api_key blank to skip vision and
+    # the compose step: reason() then falls back to the deterministic card from build_scene_card.
     nebius_api_key: str = ""
     nebius_base_url: str = "https://api.tokenfactory.nebius.com/v1/"
     nebius_vlm_model: str = "Qwen/Qwen2.5-VL-72B-Instruct"
+    nemotron_model: str = "nvidia/nemotron-3-super-120b-a12b"
 
     # Fine-tuned PoliceAI reasoner — an OpenAI-compatible server (see police-llm/).
     # The model was trained on SCENE CARD prompts; reason() rebuilds that exact format.

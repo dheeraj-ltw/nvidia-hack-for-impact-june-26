@@ -28,6 +28,37 @@ def _context() -> ReasoningInput:
     )
 
 
+# The exact field skeleton the model was fine-tuned on — order and labels must match
+# src/generate_dataset.py render_scene_card. Drift here silently degrades guidance.
+_TRAINED_CARD_LABELS = [
+    "Location",
+    "Incident type",
+    "Subjects",
+    "Officer",
+    "Duration",
+    "Key facts",
+    "Weather",
+    "Escalation index",
+    "QUERY",
+    "OFFICER CONTEXT",
+    "Jurisdiction",
+    "Years experience",
+    "Certs",
+    "Prior incidents at location",
+]
+
+
+def test_scene_card_skeleton_matches_training_format() -> None:
+    card = policeai.build_scene_card(_context())
+    labels = [line.split(":", 1)[0] for line in card.splitlines() if ":" in line]
+    assert labels == _TRAINED_CARD_LABELS
+    # The live narrative (scene + dialogue) folds into Key facts — training has no
+    # separate dialogue field, so it must land there to match the trained cards.
+    key_facts_line = next(line for line in card.splitlines() if line.startswith("Key facts:"))
+    assert "one person near a parked car" in key_facts_line
+    assert "stop there" in key_facts_line
+
+
 def test_build_messages_uses_trained_system_prompt_and_scene_card() -> None:
     messages = policeai.build_messages(_context())
     assert messages[0]["role"] == "system"
@@ -36,6 +67,19 @@ def test_build_messages_uses_trained_system_prompt_and_scene_card() -> None:
     assert "SCENE CARD" in user
     assert "High Street, Camden" in user
     assert "person" in user  # detection label rendered into the card
+
+
+def test_build_messages_uses_composed_card_when_given() -> None:
+    # A pre-composed (Nemotron-refined) card is used verbatim as the user turn.
+    composed = "SCENE CARD (live patrol)\nScene: refined by Nemotron\nQUERY: next step?"
+    messages = policeai.build_messages(_context(), scene_card=composed)
+    assert messages[1]["content"] == composed
+
+
+def test_build_messages_falls_back_to_deterministic_card_when_blank() -> None:
+    # A blank composed card falls back to the deterministic SCENE CARD.
+    messages = policeai.build_messages(_context(), scene_card="   ")
+    assert messages[1]["content"] == policeai.build_scene_card(_context())
 
 
 def test_parse_guidance_extracts_structured_fields() -> None:

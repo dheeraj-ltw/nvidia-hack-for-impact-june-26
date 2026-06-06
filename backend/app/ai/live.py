@@ -5,8 +5,10 @@
 - analyze_frame: a no-op on the live path. Vision (VLM scene captioning) runs post-session
   over the recorded frames so it can never block live transcription — see
   app.api.sessions.run_scene_analysis. Object detection is still pending.
-- reason: the fine-tuned PoliceAI model via its OpenAI-compatible server (police-llm/),
-  prompted with the SCENE CARD format it was trained on.
+- reason: NVIDIA NIM Nemotron composes the SCENE CARD from the transcript (+ any scene
+  summary), then the fine-tuned PoliceAI model (OpenAI-compatible server, police-llm/) reasons
+  over it. Nemotron is skipped when NVIDIA_API_KEY is unset, falling back to the deterministic
+  card so reasoning never stalls on that step.
 
 Network calls are defensive: any provider error degrades to an empty result rather than
 crashing the realtime session.
@@ -20,6 +22,7 @@ import httpx
 
 from app.ai import policeai
 from app.ai.base import Frame, ReasoningInput, Transcription
+from app.ai.nemotron import SceneCardComposer
 from app.ai.speaker_id import extract_words
 from app.config import get_settings
 from app.models.events import BoundingBox, GuidanceEvent
@@ -41,6 +44,15 @@ class LiveAIService:
         self._stt_model = settings.elevenlabs_stt_model
         self._policeai_base_url = settings.policeai_base_url.rstrip("/")
         self._policeai_model = settings.policeai_model
+        # Nemotron composes the SCENE CARD before PoliceAI reasons over it. This is the second
+        # Nebius Token Factory call (the first is the VLM): same endpoint + key, but the
+        # Nemotron model rather than Qwen-VL. No Nebius key => compose() is a no-op and we fall
+        # back to the deterministic card.
+        self._scene_card = SceneCardComposer(
+            base_url=settings.nebius_base_url,
+            model=settings.nemotron_model,
+            api_key=settings.nebius_api_key,
+        )
 
     async def transcribe(self, audio_chunk: bytes) -> Transcription:
         if not self._elevenlabs_key or len(audio_chunk) < 1024:
@@ -78,6 +90,10 @@ class LiveAIService:
         if not context.transcript.strip() and not context.scene_summary.strip():
             return None
 
+        # Nemotron refines the deterministic draft into a cleaner SCENE CARD; on any failure
+        # (or no NVIDIA key) compose() returns "" and build_messages falls back to the draft.
+        scene_card = await self._scene_card.compose(policeai.build_scene_card(context))
+
         headers = {"Content-Type": "application/json"}
 
         logger.info(
@@ -92,7 +108,7 @@ class LiveAIService:
                     headers=headers,
                     json={
                         "model": self._policeai_model,
-                        "messages": policeai.build_messages(context),
+                        "messages": policeai.build_messages(context, scene_card=scene_card),
                         "temperature": 0.2,
                         "max_tokens": 700,
                     },

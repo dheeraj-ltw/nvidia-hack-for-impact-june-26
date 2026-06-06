@@ -45,31 +45,61 @@ _THINK_BLOCK = re.compile(r"<think>.*?</think>", re.DOTALL)
 def build_scene_card(context: ReasoningInput) -> str:
     """Render the realtime context as a SCENE CARD in the model's training format.
 
-    Only fields we actually have at runtime are filled; the scene/detection summary and
-    the rolling transcript stand in for the richer synthetic scene cards used in training.
+    The field skeleton MUST match the cards the model was fine-tuned on (see
+    src/generate_dataset.py render_scene_card): Location / Incident type / Subjects /
+    Officer / Duration / Key facts / Weather / Escalation index, then QUERY, then an
+    OFFICER CONTEXT block. Drift from this layout silently degrades guidance.
+
+    We only have a subset of those fields live, so the unknowns carry explicit "Unknown"
+    placeholders rather than being dropped (keeping the skeleton intact), and the scene
+    summary, detections, and rolling transcript are folded into Key facts — training has
+    no separate dialogue field, so the narrative belongs there. The Nemotron compose step
+    (app.ai.nemotron) enriches these soft fields without changing the skeleton.
     """
-    detections = ", ".join(box.label for box in context.detections) or "none reported"
+    scene = context.scene_summary.strip() or "No visual summary available"
+    detections = ", ".join(box.label for box in context.detections)
+    transcript = context.transcript.strip() or "(no speech transcribed yet)"
+    key_facts = f"Scene: {scene}."
+    if detections:
+        key_facts += f" Visible objects: {detections}."
+    key_facts += f" Recent dialogue: {transcript}"
+
     lines = [
         "SCENE CARD (live patrol)",
         f"Location: {context.location or 'Unknown'}",
-        f"Scene: {context.scene_summary or 'No visual summary available'}",
-        f"Visible objects: {detections}",
-        "Jurisdiction: England & Wales",
-        "",
-        "RECENT DIALOGUE:",
-        context.transcript.strip() or "(no speech transcribed yet)",
+        "Incident type: Unknown",
+        "Subjects: Unknown",
+        "Officer: Unknown",
+        "Duration: Unknown",
+        f"Key facts: {key_facts}",
+        "Weather: Unknown",
+        "Escalation index: Unknown",
         "",
         "QUERY: Based on the scene and dialogue so far, what is the lawful, "
         "de-escalation-focused next step, and what must I tell the subject?",
+        "",
+        "OFFICER CONTEXT:",
+        "Jurisdiction: England & Wales",
+        "Years experience: Unknown",
+        "Certs: Unknown",
+        "Prior incidents at location: Unknown",
     ]
     return "\n".join(lines)
 
 
-def build_messages(context: ReasoningInput) -> list[dict[str, str]]:
-    """The full chat payload for the fine-tuned model: system + SCENE CARD user turn."""
+def build_messages(
+    context: ReasoningInput, *, scene_card: str | None = None
+) -> list[dict[str, str]]:
+    """The full chat payload for the fine-tuned model: system + SCENE CARD user turn.
+
+    `scene_card`, when given, is a pre-composed card (the Nemotron-refined version, see
+    app.ai.nemotron). It must follow the same format as build_scene_card, since the model was
+    fine-tuned on that layout. Falls back to the deterministic card when omitted or blank.
+    """
+    card = (scene_card or "").strip() or build_scene_card(context)
     return [
         {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": build_scene_card(context)},
+        {"role": "user", "content": card},
     ]
 
 
