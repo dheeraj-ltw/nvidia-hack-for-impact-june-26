@@ -27,6 +27,12 @@ class Settings(BaseSettings):
     nebius_vlm_model: str = "Qwen/Qwen2.5-VL-72B-Instruct"
     nemotron_model: str = "nvidia/nemotron-3-super-120b-a12b"
 
+    # Scene-card compiler — Nebius-hosted Nemotron 3 Super. Reuses nebius_api_key but on a
+    # separate regional endpoint. Compiles each recorded session's transcript + VLM scene into
+    # a factual SCENE CARD (no legal reasoning) — see app/ai/scene_compiler.py.
+    nebius_scene_base_url: str = "https://api.tokenfactory.us-central1.nebius.com/v1/"
+    nebius_scene_model: str = "nvidia/nemotron-3-super-120b-a12b"
+
     # Fine-tuned PoliceAI reasoner — an OpenAI-compatible server (see police-llm/).
     # The model was trained on SCENE CARD prompts; reason() rebuilds that exact format.
     # The server runs unauthenticated, so no API key is sent.
@@ -45,9 +51,16 @@ class Settings(BaseSettings):
     elevenlabs_voice_id: str = ""
     elevenlabs_tts_model: str = "eleven_multilingual_v2"
     elevenlabs_stt_model: str = "scribe_v1"
+    # Pin STT to one language so Scribe doesn't auto-detect a different one per clip (which makes
+    # non-speech audio get tagged in random languages). Blank = auto-detect. ISO-639-3, e.g. "eng".
+    elevenlabs_stt_language: str = "eng"
 
     # Speaker identification: minimum cosine similarity for a voice to count as the officer.
     speaker_match_threshold: float = 0.70
+
+    # Where to mirror per-session SCENE CARD JSONL files (request format) for dataset
+    # collection. Blank → the repo's data/output/. Object storage always gets a copy too.
+    scene_card_dir: str = ""
 
     # Object storage (MinIO / S3) — stores recorded session media + manifests
     s3_endpoint: str = "http://minio:9000"

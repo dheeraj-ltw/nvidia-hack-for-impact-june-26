@@ -125,15 +125,21 @@ export function usePatrolSession() {
     frameTimerRef.current = null;
     if (clipTimerRef.current) window.clearInterval(clipTimerRef.current);
     clipTimerRef.current = null;
+
+    // Stop the recorders first; the clip recorder's onstop flushes its final clip over the
+    // socket. Give that a brief moment to send before we close the socket + camera — otherwise
+    // the last audio is dropped and the server may finalize a beat early.
     stopRecorder(recorderRef);
     stopRecorder(clipRecorderRef);
-    socketRef.current?.close();
-    socketRef.current = null;
-    streamRef.current?.getTracks().forEach((track) => track.stop());
-    streamRef.current = null;
-    // Clear the live panel: the patrol is over and the full session is persisted
-    // server-side (it appears under Recorded sessions). Leaving the transcript/guidance
-    // up would strand a stale live view until the next patrol resets it.
+    window.setTimeout(() => {
+      socketRef.current?.close();
+      socketRef.current = null;
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }, 300);
+
+    // Update the UI immediately — the session finalizes server-side and then appears under
+    // Recorded sessions (the library polls for it). Clearing the live panel avoids a stale view.
     setState((prev) => ({
       ...prev,
       conn: "closed",

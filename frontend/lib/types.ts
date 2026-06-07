@@ -74,6 +74,7 @@ export interface OfficerSummary {
 export interface SessionSummary {
   session_id: string;
   label: string | null;
+  status: string; // "processing" | "ready"
   started_at: number;
   ended_at: number | null;
   frame_count: number;
@@ -86,8 +87,8 @@ export interface SessionSummary {
 
 export interface RecordedEvent {
   offset_seconds: number;
-  kind: "transcript" | "guidance";
-  payload: TranscriptEvent | GuidanceEvent;
+  kind: "transcript" | "guidance" | "detection";
+  payload: TranscriptEvent | GuidanceEvent | DetectionEvent;
 }
 
 export interface SessionManifest {

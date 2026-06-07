@@ -1,0 +1,65 @@
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'Helvetica, Arial, sans-serif','fontSize':'13px','primaryColor':'#f5f7f1','primaryTextColor':'#1c212e','primaryBorderColor':'#76b900','lineColor':'#6b7280','clusterBkg':'#ffffff','clusterBorder':'#cfd6cf'}}}%%
+flowchart LR
+    subgraph BROWSER["Browser — Patrol Console (usePatrolSession.ts)"]
+        direction TB
+        CAM["📷 Camera"]
+        MIC["🎙 Microphone"]
+        CAP["Frame capture<br/>~2 fps JPEG q0.6"]
+        CLIP["Clip recorder<br/>4 s complete WebM"]
+        UI["Feed · Detections · Transcript · Guidance cards"]
+        SPK["🔊 TTS playback<br/>(Audio element)"]
+    end
+
+    subgraph BE["FastAPI backend"]
+        direction TB
+        SESS["WebSocket session<br/>(session.py) — decode binary"]
+        REC[("Recorder → MinIO<br/>frames · audio · manifest")]
+        HF["Orchestrator.handle_frame<br/>throttled ≤1 / 0.7 s, drop-if-busy"]
+        HA["Orchestrator.handle_audio"]
+        CARD["build SCENE CARD<br/>Scene: + Visible objects: + RECENT DIALOGUE:"]
+    end
+
+    subgraph PROV["AI providers (AI_BACKEND=live)"]
+        direction TB
+        NEB["Nebius Qwen2.5-VL<br/>vlm.py · 1 image, max_tokens 120"]
+        STT["ElevenLabs Scribe STT<br/>diarize + word timestamps"]
+        POL["PoliceAI reasoner<br/>police-llm GGUF · think + JSON"]
+        TTS["ElevenLabs TTS<br/>eleven_multilingual_v2 → mp3"]
+    end
+
+    %% capture
+    CAM --> CAP -->|"0x00 video"| SESS
+    MIC --> CLIP -->|"0x02 audio clip"| SESS
+    SESS -->|"0x01 chunk (recorded only)"| REC
+    SESS -->|"frames + transcript/guidance"| REC
+
+    %% VISION / VLM path
+    SESS -->|"frame"| HF
+    HF -->|"jpeg"| NEB
+    NEB -.->|"scene summary"| HF
+    HF -->|"DetectionEvent (boxes=[], summary)"| UI
+
+    %% STT path
+    SESS -->|"clip"| HA
+    HA -->|"clip.webm"| STT
+    STT -.->|"text + words"| HA
+    HA -->|"TranscriptEvent (officer/subject)"| UI
+
+    %% REASONING (scene summary + rolling transcript)
+    HF --> CARD
+    HA -.->|"rolling transcript"| CARD
+    CARD -->|"system + SCENE CARD"| POL
+    POL -.->|"think + JSON"| GUID["parse → GuidanceEvent"]
+    GUID -->|"GuidanceEvent (cited)"| UI
+
+    %% TTS path
+    GUID -->|"suggestion text"| TTS
+    TTS -.->|"mp3 bytes"| SPEECH["base64 → SpeechEvent"]
+    SPEECH -->|"data:audio/mp3"| SPK
+
+    classDef prov fill:#eef7e0,stroke:#76b900,color:#1c212e;
+    classDef store fill:#fff6e6,stroke:#f59e0b,color:#1c212e;
+    classDef io fill:#eaf1ff,stroke:#2563eb,color:#1c212e;
+    class NEB,STT,POL,TTS prov;
+    class REC store;
+    class CAM,MIC,UI,SPK io;

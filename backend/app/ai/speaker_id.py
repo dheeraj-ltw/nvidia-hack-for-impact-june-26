@@ -238,6 +238,12 @@ def transcribe_with_speakers(audio: bytes) -> dict[str, Any]:
                     "model_id": settings.elevenlabs_stt_model,
                     "diarize": "true",
                     "timestamps_granularity": "word",
+                    "tag_audio_events": "false",
+                    **(
+                        {"language_code": settings.elevenlabs_stt_language}
+                        if settings.elevenlabs_stt_language
+                        else {}
+                    ),
                 },
                 files={"file": ("conversation.webm", audio, "audio/webm")},
             )

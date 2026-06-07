@@ -103,6 +103,97 @@ def build_messages(
     ]
 
 
+def _format_duration(seconds: float) -> str:
+    total = max(0, int(seconds))
+    return f"{total // 60}m {total % 60:02d}s"
+
+
+# Keyword cues for a rough escalation read off the recorded scene + dialogue.
+_HIGH_RISK_CUES = ("weapon", "knife", "gun", "firearm", "blade", "machete")
+_MED_RISK_CUES = (
+    "raised voice", "shouting", "shout", "agitated", "aggressive", "threat",
+    "struggle", "resist", "fighting", "altercation", "punch",
+)
+# Negators that flip a cue into an absence ("no weapons visible") — the VLM constantly lists
+# what is NOT present, so a bare substring match would wildly over-score. We ignore a cue when
+# one of these appears shortly before it.
+_NEGATORS = ("no ", "not ", "without ", "never ", "none ", "n't ", "absence of ", "free of ")
+_NEGATION_WINDOW = 64  # chars before a cue to scan for a negator
+
+
+def _affirmatively_mentions(text: str, cues: tuple[str, ...]) -> bool:
+    """True if any cue appears in `text` without a negator in the preceding window."""
+    for cue in cues:
+        idx = text.find(cue)
+        while idx != -1:
+            window = text[max(0, idx - _NEGATION_WINDOW): idx]
+            if not any(neg in window for neg in _NEGATORS):
+                return True
+            idx = text.find(cue, idx + 1)
+    return False
+
+
+def _derive_subjects(scene_text: str) -> str:
+    """Surface the subject from the VLM scene (phrased 'The officer is facing <subject>...')."""
+    first = scene_text.strip().splitlines()[0] if scene_text.strip() else ""
+    if not first:
+        return "Unknown"
+    match = re.match(r"(?i)the officer is facing\s+(.*)", first)
+    subject = (match.group(1) if match else first).strip()
+    subject = subject.split(". ")[0].rstrip(".")  # first sentence only
+    return subject[:200] or "Unknown"
+
+
+def _derive_escalation(scene_text: str, transcript: str) -> str:
+    """A coarse escalation index from negation-aware keyword cues in scene + dialogue."""
+    blob = f"{scene_text}\n{transcript}".lower()
+    if _affirmatively_mentions(blob, _HIGH_RISK_CUES):
+        return "0.80 (HIGH)"
+    if _affirmatively_mentions(blob, _MED_RISK_CUES):
+        return "0.50 (ELEVATED)"
+    return "0.15 (LOW)"
+
+
+def build_session_scene_card(
+    *,
+    updated_clock: str,
+    officer_name: str | None,
+    duration_seconds: float,
+    scene_text: str,
+    transcript: str,
+) -> str:
+    """Render a finished session's scene + dialogue as a SCENE CARD (sample.jsonl layout).
+
+    Used by the post-session reasoner. Mirrors the training format: a header of situational
+    fields, a RECENT DIALOGUE block, then a QUERY and OFFICER CONTEXT. Fields we don't capture
+    at runtime are left "Unknown"; the VLM scene text and the transcript carry the real signal.
+    """
+    lines = [
+        f"SCENE CARD (updated {updated_clock})",
+        "Location: Unknown",
+        "Incident type: Unknown",
+        f"Subjects: {_derive_subjects(scene_text)}",
+        f"Officer: {officer_name or 'Unknown'}",
+        f"Duration: {_format_duration(duration_seconds)}",
+        f"Key facts: {scene_text.strip() or 'No visual scene was captured.'}",
+        "Weather: Unknown",
+        f"Escalation index: {_derive_escalation(scene_text, transcript)}",
+        "",
+        "RECENT DIALOGUE:",
+        transcript.strip() or "(no speech transcribed)",
+        "",
+        "QUERY: Based on the scene and dialogue recorded, what is the lawful, "
+        "de-escalation-focused guidance for this officer, and what must they tell the subject?",
+        "",
+        "OFFICER CONTEXT:",
+        "Jurisdiction: England & Wales",
+        "Years experience: Unknown",
+        "Certs: Unknown",
+        "Prior incidents at location: Unknown",
+    ]
+    return "\n".join(lines)
+
+
 def _extract_json(content: str) -> dict[str, object] | None:
     """Pull the JSON object that follows the <think> block (fences tolerated)."""
     body = _THINK_BLOCK.sub("", content).strip()

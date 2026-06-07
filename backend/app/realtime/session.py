@@ -24,10 +24,15 @@ import uuid
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from app.ai import get_ai_service
-from app.ai.base import Frame
 from app.ai.speaker_id import warm_up
 from app.api.officers import load_profile
-from app.models.events import GuidanceEvent, PatrolEvent, StatusEvent, TranscriptEvent
+from app.models.events import (
+    DetectionEvent,
+    GuidanceEvent,
+    PatrolEvent,
+    StatusEvent,
+    TranscriptEvent,
+)
 from app.models.officer import OfficerProfile
 from app.pipeline.orchestrator import SessionPipeline
 from app.recording import SessionRecorder
@@ -80,16 +85,13 @@ async def patrol_websocket(websocket: WebSocket) -> None:
         type(ai_service).__name__,
     )
 
-    # Audio (inline) and frame analysis (a detached task) both emit, so serialize the actual
-    # WebSocket send — concurrent send_text on one connection is not safe.
-    send_lock = asyncio.Lock()
-
     async def emit(event: PatrolEvent) -> None:
-        # Persist transcript/guidance so the recorded session can replay its logs.
-        if recorder is not None and isinstance(event, TranscriptEvent | GuidanceEvent):
+        # Persist transcript/guidance/scene so the recorded session can replay its logs.
+        if recorder is not None and isinstance(
+            event, TranscriptEvent | GuidanceEvent | DetectionEvent
+        ):
             recorder.record_event(event)
-        async with send_lock:
-            await websocket.send_text(event.model_dump_json())
+        await websocket.send_text(event.model_dump_json())
 
     pipeline = SessionPipeline(
         ai_service=ai_service, emit=emit, officer_embedding=officer_embedding
@@ -124,12 +126,9 @@ async def patrol_websocket(websocket: WebSocket) -> None:
                 )
 
             if message_kind == MESSAGE_KIND_VIDEO:
+                # Frames are recorded only. Video understanding is deferred to the session-end
+                # summarization pass (summarize_session_video) rather than running per frame.
                 await recorder.add_frame(payload, timestamp)
-                # Non-blocking: analysis runs as a detached task so it can't delay the next
-                # audio clip (and thus transcription). Frame is already recorded above.
-                pipeline.schedule_frame(
-                    Frame(ts=timestamp, jpeg=payload, width=width, height=height)
-                )
             elif message_kind == MESSAGE_KIND_AUDIO:
                 # Continuous fragment — store it, but it is not independently decodable.
                 recorder.add_audio_chunk(payload)
@@ -139,8 +138,6 @@ async def patrol_websocket(websocket: WebSocket) -> None:
     except WebSocketDisconnect:
         pass
     finally:
-        # Let any in-flight frame analysis finish emitting before we tear down.
-        await pipeline.aclose()
         if recorder is not None:
             await recorder.finalize(last_timestamp)
             logger.info(
@@ -163,38 +160,53 @@ async def patrol_websocket(websocket: WebSocket) -> None:
 
 
 async def _finalize_session(session_id: str, run_identify: bool) -> None:
-    """Post-session pipeline: speaker-ID + scene analysis, then the incident report + webhooks.
+    """Post-session pipeline: optional speaker-ID, then the incident report + webhooks.
 
-    Identification and VLM scene analysis run first (and concurrently) so the report captures
-    the diarized officer/person1/person2 transcript and the scene context. Each step is
-    isolated — a failure is logged and never raised from the background task.
+    Identification runs first when possible so the report captures the diarized
+    officer/person1/person2 transcript rather than the live officer/subject labels.
+    Each step is isolated — a failure is logged and never raised from the background task.
     """
     from app.api.sessions import (
         generate_session_report,
-        run_scene_analysis,
+        mark_session_ready,
         run_session_identification,
+        summarize_session_video,
+        transcribe_session_audio,
+        write_session_scene_card,
     )
 
-    async def _identify() -> None:
-        if not run_identify:
-            return
+    if run_identify:
         try:
             await run_session_identification(session_id)
         except Exception as error:  # noqa: BLE001 - background task; nothing to surface to
             logger.warning("Post-session identification failed for %s: %s", session_id, error)
 
-    async def _scene() -> None:
-        try:
-            await run_scene_analysis(session_id)
-        except Exception as error:  # noqa: BLE001 - background task; nothing to surface to
-            logger.warning("Post-session scene analysis failed for %s: %s", session_id, error)
+    # Transcribe sessions that have audio but no transcript yet (e.g. uploaded videos).
+    try:
+        await transcribe_session_audio(session_id)
+    except Exception as error:  # noqa: BLE001 - background task; nothing to surface to
+        logger.warning("Transcription failed for %s: %s", session_id, error)
 
-    # Both write disjoint manifest fields (events/diarization vs scene_summary) and each
-    # re-loads then saves, so run them in sequence to avoid a last-write-wins clobber.
-    await _identify()
-    await _scene()
+    # Summarise the recorded video once, at the end (not per live frame). Must run before the
+    # scene-card pass so the card has a scene to work from.
+    try:
+        await summarize_session_video(session_id)
+    except Exception as error:  # noqa: BLE001 - background task; nothing to surface to
+        logger.warning("Video summarization failed for %s: %s", session_id, error)
 
     try:
         await generate_session_report(session_id)
     except Exception as error:  # noqa: BLE001 - background task; nothing to surface to
         logger.warning("Incident report generation failed for %s: %s", session_id, error)
+
+    # Build the SCENE CARD (request-format JSONL) for downstream reasoning / dataset collection.
+    try:
+        await write_session_scene_card(session_id)
+    except Exception as error:  # noqa: BLE001 - background task; nothing to surface to
+        logger.warning("Scene card generation failed for %s: %s", session_id, error)
+
+    # Post-processing done — flip the session from "processing" to "ready".
+    try:
+        await mark_session_ready(session_id)
+    except Exception as error:  # noqa: BLE001 - background task; nothing to surface to
+        logger.warning("Could not mark session %s ready: %s", session_id, error)

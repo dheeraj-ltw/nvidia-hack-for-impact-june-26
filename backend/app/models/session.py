@@ -23,6 +23,9 @@ class RecordedEvent(BaseModel):
 class SessionManifest(BaseModel):
     session_id: str
     label: str | None = None
+    # "processing" while the session-end pipeline (diarize → video summary → report → scene
+    # card) runs in the background; "ready" once it finishes. Defaults ready for old manifests.
+    status: str = "ready"
     started_at: float  # client capture clock (seconds)
     ended_at: float | None = None
     frame_count: int = 0
@@ -32,6 +35,7 @@ class SessionManifest(BaseModel):
     audio_key: str | None = None
     video_key: str | None = None  # encoded MP4, produced on demand
     report_key: str | None = None  # incident report JSON, produced on session end
+    scene_card_key: str | None = None  # SCENE CARD request JSONL, produced on session end
     events: list[RecordedEvent] = Field(default_factory=list)
     # Who was on patrol (no-auth roster) + the post-session speaker-ID result, if run.
     officer_id: str | None = None
@@ -100,6 +104,7 @@ class SessionSummary(BaseModel):
 
     session_id: str
     label: str | None
+    status: str = "ready"  # "processing" | "ready"
     started_at: float
     ended_at: float | None
     frame_count: int
