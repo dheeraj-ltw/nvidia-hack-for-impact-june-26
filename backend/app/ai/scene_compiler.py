@@ -54,8 +54,15 @@ class SceneCardComposer:
 
     def _user_message(
         self, *, transcript: str, scene_text: str, officer_name: str | None,
-        duration: str, updated_clock: str,
+        duration: str, updated_clock: str, location: str | None,
     ) -> str:
+        # A known location (reverse-geocoded from the patrol's GPS) is pinned into the field so
+        # the model reports it verbatim; otherwise it falls back to describing the setting.
+        location_field = (
+            f"Location: {location}"
+            if location
+            else "Location: <type of setting observed, e.g. indoors / roadside; or Unknown>"
+        )
         return (
             "VISUAL SCENE ANALYSIS (chronological):\n"
             f"{scene_text.strip() or '(no visual analysis captured)'}\n\n"
@@ -63,7 +70,7 @@ class SceneCardComposer:
             f"{transcript.strip() or '(no speech transcribed)'}\n\n"
             "Fill this SCENE CARD exactly, keeping the field names and order:\n\n"
             f"SCENE CARD (updated {updated_clock})\n"
-            "Location: <type of setting observed, e.g. indoors / roadside; or Unknown>\n"
+            f"{location_field}\n"
             "Incident type: <short factual category, e.g. street encounter / traffic stop / "
             "welfare check; or Unknown>\n"
             "Subjects: <number, gender if visible, appearance, demeanour>\n"
@@ -82,7 +89,7 @@ class SceneCardComposer:
 
     async def compose(
         self, *, transcript: str, scene_text: str, officer_name: str | None,
-        duration: str, updated_clock: str,
+        duration: str, updated_clock: str, location: str | None = None,
     ) -> str:
         """Return a compiled SCENE CARD string, or "" on any failure / missing key."""
         if not self._api_key:
@@ -94,7 +101,7 @@ class SceneCardComposer:
         }
         user = self._user_message(
             transcript=transcript, scene_text=scene_text, officer_name=officer_name,
-            duration=duration, updated_clock=updated_clock,
+            duration=duration, updated_clock=updated_clock, location=location,
         )
 
         logger.info("→ Nebius scene compiler %s model=%s", self._base_url, self._model)

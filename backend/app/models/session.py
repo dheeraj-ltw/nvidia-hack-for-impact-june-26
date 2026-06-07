@@ -40,6 +40,9 @@ class SessionManifest(BaseModel):
     # Who was on patrol (no-auth roster) + the post-session speaker-ID result, if run.
     officer_id: str | None = None
     officer_name: str | None = None
+    # Reverse-geocoded patrol location (from the WS ?lat=&lon=), used for the SCENE CARD's
+    # Location line at session end. None for uploads / when no GPS fix was available.
+    location: str | None = None
     diarization: dict[str, Any] | None = None
     # Post-session VLM scene description over the recorded frames (None until that pass runs).
     scene_summary: str | None = None

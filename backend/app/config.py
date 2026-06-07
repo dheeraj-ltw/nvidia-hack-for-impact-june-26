@@ -62,6 +62,14 @@ class Settings(BaseSettings):
     # collection. Blank → the repo's data/output/. Object storage always gets a copy too.
     scene_card_dir: str = ""
 
+    # Reverse geocoding — turns the patrol's GPS coords (sent on the WS URL) into a
+    # human-readable place name for the SCENE CARD's Location line. Defaults to OpenStreetMap's
+    # free Nominatim service, which needs no key but does require a descriptive User-Agent.
+    # On any failure we fall back to the raw "lat, lon" string, so this is best-effort.
+    geocoding_base_url: str = "https://nominatim.openstreetmap.org/reverse"
+    geocoding_user_agent: str = "patrol-assist/0.1 (reverse-geocoding)"
+    geocoding_timeout_seconds: float = 5.0
+
     # Object storage (MinIO / S3) — stores recorded session media + manifests
     s3_endpoint: str = "http://minio:9000"
     s3_access_key: str = "minioadmin"
