@@ -82,6 +82,27 @@ def test_build_messages_falls_back_to_deterministic_card_when_blank() -> None:
     assert messages[1]["content"] == policeai.build_scene_card(_context())
 
 
+def _session_card(location: str | None) -> str:
+    return policeai.build_session_scene_card(
+        updated_clock="12:00:00",
+        officer_name="PC Smith",
+        duration_seconds=42.0,
+        scene_text="one person near a parked car",
+        transcript="officer: stop there.",
+        location=location,
+    )
+
+
+def test_session_scene_card_renders_reverse_geocoded_location() -> None:
+    # A reverse-geocoded location lands verbatim on the deterministic card's Location line.
+    assert "Location: High Street, Camden, London" in _session_card("High Street, Camden, London")
+
+
+def test_session_scene_card_falls_back_to_unknown_without_location() -> None:
+    # No GPS fix => the Location line keeps its "Unknown" fallback.
+    assert "Location: Unknown" in _session_card(None)
+
+
 def test_parse_guidance_extracts_structured_fields() -> None:
     content = (
         "<think>reasoning about s.23 MDA 1971</think>\n"

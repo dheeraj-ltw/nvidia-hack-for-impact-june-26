@@ -24,6 +24,7 @@ import uuid
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from app.ai import get_ai_service
+from app.ai.geocoding import reverse_geocode
 from app.ai.speaker_id import warm_up
 from app.api.officers import load_profile
 from app.models.events import (
@@ -57,6 +58,18 @@ async def _load_officer(officer_id: str | None) -> OfficerProfile | None:
         logger.warning("Could not load officer %s: %s", officer_id, error)
         return None
 
+
+def _parse_coords(raw_lat: str | None, raw_lon: str | None) -> tuple[float | None, float | None]:
+    """Parse the optional ?lat=&lon= WS query params; a missing/garbled pair yields (None, None)."""
+    if raw_lat is None or raw_lon is None:
+        return None, None
+    try:
+        return float(raw_lat), float(raw_lon)
+    except ValueError:
+        logger.warning("Ignoring non-numeric lat/lon: %r, %r", raw_lat, raw_lon)
+        return None, None
+
+
 MESSAGE_KIND_VIDEO = 0x00
 MESSAGE_KIND_AUDIO = 0x01  # continuous WebM fragment, for the recorded track
 MESSAGE_KIND_AUDIO_CLIP = 0x02  # complete, self-contained WebM file, for speech-to-text
@@ -75,13 +88,22 @@ async def patrol_websocket(websocket: WebSocket) -> None:
         # Preload the voice encoder off the event loop so the first live match isn't slow.
         await asyncio.to_thread(warm_up)
 
+    # Where is the patrol? GPS comes in as ?lat=&lon=; resolve it once to a place name that the
+    # session-end SCENE CARD uses for its Location line. Best-effort: no coords => None (card
+    # shows "Unknown"), a failed lookup => the raw "lat, lon" string.
+    lat, lon = _parse_coords(
+        websocket.query_params.get("lat"), websocket.query_params.get("lon")
+    )
+    location = await reverse_geocode(lat, lon)
+
     session_id = uuid.uuid4().hex
     recorder: SessionRecorder | None = None
     last_timestamp = 0.0
     logger.info(
-        "WS patrol connected: session=%s officer=%s backend=%s",
+        "WS patrol connected: session=%s officer=%s location=%s backend=%s",
         session_id,
         officer.name if officer else "(none)",
+        location or "(unknown)",
         type(ai_service).__name__,
     )
 
@@ -115,6 +137,7 @@ async def patrol_websocket(websocket: WebSocket) -> None:
                     timestamp,
                     officer_id=officer.officer_id if officer else None,
                     officer_name=officer.name if officer else None,
+                    location=location,
                 )
                 await emit(
                     StatusEvent(

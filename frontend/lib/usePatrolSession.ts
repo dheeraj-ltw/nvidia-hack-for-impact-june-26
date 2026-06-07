@@ -46,6 +46,28 @@ function captureClockSeconds(): number {
 }
 
 /**
+ * Best-effort one-shot GPS fix for the patrol's location, resolved to lat/lon query params.
+ * Returns "" if geolocation is unavailable, denied, or times out — the patrol must never block
+ * on it, and the backend simply reports the location as "Unknown" in that case.
+ */
+async function locationQuery(): Promise<string> {
+  if (typeof navigator === "undefined" || !navigator.geolocation) return "";
+  try {
+    const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+      navigator.geolocation.getCurrentPosition(resolve, reject, {
+        enableHighAccuracy: true,
+        timeout: 5000,
+        maximumAge: 60000,
+      });
+    });
+    const { latitude, longitude } = position.coords;
+    return `lat=${latitude}&lon=${longitude}`;
+  } catch {
+    return "";
+  }
+}
+
+/**
  * Owns the camera stream, the WebSocket, and the frame/audio capture loops.
  * Attach `videoRef` to a <video> element; call start()/stop().
  */
@@ -218,7 +240,11 @@ export function usePatrolSession() {
       await videoRef.current.play().catch(() => {});
     }
 
-    const query = officerId ? `?officer_id=${encodeURIComponent(officerId)}` : "";
+    const params = [
+      officerId ? `officer_id=${encodeURIComponent(officerId)}` : "",
+      await locationQuery(),
+    ].filter(Boolean);
+    const query = params.length ? `?${params.join("&")}` : "";
     const socket = new WebSocket(`${WS_BASE}/ws/patrol${query}`);
     socket.binaryType = "arraybuffer";
     socketRef.current = socket;

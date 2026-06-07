@@ -161,16 +161,18 @@ def build_session_scene_card(
     duration_seconds: float,
     scene_text: str,
     transcript: str,
+    location: str | None = None,
 ) -> str:
     """Render a finished session's scene + dialogue as a SCENE CARD (sample.jsonl layout).
 
     Used by the post-session reasoner. Mirrors the training format: a header of situational
     fields, a RECENT DIALOGUE block, then a QUERY and OFFICER CONTEXT. Fields we don't capture
     at runtime are left "Unknown"; the VLM scene text and the transcript carry the real signal.
+    The reverse-geocoded `location` fills the Location line when a GPS fix was available.
     """
     lines = [
         f"SCENE CARD (updated {updated_clock})",
-        "Location: Unknown",
+        f"Location: {location or 'Unknown'}",
         "Incident type: Unknown",
         f"Subjects: {_derive_subjects(scene_text)}",
         f"Officer: {officer_name or 'Unknown'}",

@@ -48,6 +48,7 @@ class SessionRecorder:
         *,
         officer_id: str | None = None,
         officer_name: str | None = None,
+        location: str | None = None,
     ) -> None:
         self._store = object_store
         self._started_at = started_at
@@ -56,6 +57,7 @@ class SessionRecorder:
             started_at=started_at,
             officer_id=officer_id,
             officer_name=officer_name,
+            location=location,
         )
         self._audio_buffer = bytearray()
         # Dedup/throttle state for the recorded VLM scene stream.

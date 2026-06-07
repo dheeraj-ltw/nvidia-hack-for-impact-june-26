@@ -577,6 +577,7 @@ async def _compose_scene_card(manifest: SessionManifest) -> str:
         officer_name=manifest.officer_name,
         duration=duration,
         updated_clock=updated,
+        location=manifest.location,
     )
     if card:
         return card
@@ -588,6 +589,7 @@ async def _compose_scene_card(manifest: SessionManifest) -> str:
         duration_seconds=manifest.duration_seconds,
         scene_text=scene_text,
         transcript=transcript,
+        location=manifest.location,
     )
 
 
