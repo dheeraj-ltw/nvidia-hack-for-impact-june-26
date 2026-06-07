@@ -8,9 +8,31 @@ audio is appended into a single track.
 
 from __future__ import annotations
 
-from app.models.events import GuidanceEvent, TranscriptEvent
+import re
+
+from app.models.events import DetectionEvent, GuidanceEvent, TranscriptEvent
 from app.models.session import RecordedEvent, SessionManifest
 from app.storage import ObjectStore
+
+# Minimum seconds between recorded VLM scene snapshots. Detections arrive ~1.4/s; keeping
+# every one would flood the manifest and the playback log, so the scene stream is sampled.
+# This is the primary control on how dense the scene stream is — raise it for fewer lines.
+_SCENE_MIN_INTERVAL = 10.0
+# A static view makes the VLM re-describe the same scene with slightly different wording each
+# call. Skip a new scene whose word-overlap with the last recorded one is at least this high,
+# so the stream only advances when the scene meaningfully changes (new person/object/place).
+# Tuned low because the model rewords heavily — same-scene rewordings score ~0.3-0.5, while a
+# genuinely different scene scores well under 0.1.
+_SCENE_SIMILARITY = 0.45
+
+
+def _scene_similarity(a: str, b: str) -> float:
+    """Jaccard word-overlap of two scene descriptions, in [0, 1]."""
+    tokens_a = set(re.findall(r"[a-z0-9]+", a.lower()))
+    tokens_b = set(re.findall(r"[a-z0-9]+", b.lower()))
+    if not tokens_a or not tokens_b:
+        return 0.0
+    return len(tokens_a & tokens_b) / len(tokens_a | tokens_b)
 
 
 def session_prefix(session_id: str) -> str:
@@ -36,6 +58,9 @@ class SessionRecorder:
             officer_name=officer_name,
         )
         self._audio_buffer = bytearray()
+        # Dedup/throttle state for the recorded VLM scene stream.
+        self._last_scene: str | None = None
+        self._last_scene_offset: float | None = None
 
     @property
     def session_id(self) -> str:
@@ -72,11 +97,38 @@ class SessionRecorder:
         self._audio_buffer.extend(chunk)
         self._manifest.has_audio = True
 
-    def record_event(self, event: TranscriptEvent | GuidanceEvent) -> None:
-        """Capture a transcript/guidance event so playback can replay it in sync."""
+    def record_event(
+        self, event: TranscriptEvent | GuidanceEvent | DetectionEvent
+    ) -> None:
+        """Capture an event so playback can replay it in sync.
+
+        Transcript/guidance events are kept verbatim. Detection (VLM scene) events are
+        sampled into a "what the camera saw" stream: only a non-empty summary that has
+        changed and is at least `_SCENE_MIN_INTERVAL` seconds after the last recorded scene
+        is kept, so the stream stays readable and the manifest small.
+        """
+        offset = self._offset(event.ts)
+        if isinstance(event, DetectionEvent):
+            summary = (event.summary or "").strip()
+            if not summary:
+                return
+            # Skip near-duplicates of the last recorded scene (same view, reworded).
+            if (
+                self._last_scene is not None
+                and _scene_similarity(summary, self._last_scene) >= _SCENE_SIMILARITY
+            ):
+                return
+            # Even for a changed scene, don't record faster than the sampling floor.
+            if (
+                self._last_scene_offset is not None
+                and (offset - self._last_scene_offset) < _SCENE_MIN_INTERVAL
+            ):
+                return
+            self._last_scene = summary
+            self._last_scene_offset = offset
         self._manifest.events.append(
             RecordedEvent(
-                offset_seconds=self._offset(event.ts),
+                offset_seconds=offset,
                 kind=event.type.value,
                 payload=event.model_dump(mode="json"),
             )
@@ -89,6 +141,9 @@ class SessionRecorder:
             self._manifest.audio_key = audio_key
 
         self._manifest.ended_at = ended_at
+        # The session-end pipeline (diarize → video summary → report → scene card) runs in the
+        # background; flag a session with content as "processing" until that pass marks it ready.
+        self._manifest.status = "processing" if self.has_content else "ready"
         await self._write_manifest()
         return self._manifest
 

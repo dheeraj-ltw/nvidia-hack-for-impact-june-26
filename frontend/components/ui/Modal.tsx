@@ -13,7 +13,7 @@ interface ModalProps {
 }
 
 /**
- * Centered modal shell matching PlaybackModal: dimmed backdrop, click-outside and Escape
+ * Centered modal shell: dimmed backdrop, click-outside and Escape
  * to close, click-through guarded on the panel. Wrap dialog content in this.
  */
 export function Modal({ title, onClose, children, hideClose }: ModalProps) {

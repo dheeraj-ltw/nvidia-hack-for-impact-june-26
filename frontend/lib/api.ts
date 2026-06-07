@@ -53,6 +53,44 @@ export async function generateReport(sessionId: string): Promise<ReportResult> {
   return response.json();
 }
 
+// Scene card = the factual context the model compiles from STT + video analysis. Returns the
+// SCENE CARD text (the `user` message of the request-format JSONL).
+function sceneCardFromRecord(record: unknown): string {
+  const messages = (record as { messages?: { role: string; content: string }[] })?.messages;
+  return messages?.find((m) => m.role === "user")?.content ?? "";
+}
+
+export async function generateSceneCard(sessionId: string): Promise<string> {
+  const response = await fetch(`${API_BASE}/sessions/${sessionId}/scenecard`, {
+    method: "POST",
+  });
+  if (!response.ok) throw new Error(`Failed to generate scene card (${response.status})`);
+  return sceneCardFromRecord(await response.json());
+}
+
+export async function fetchSceneCard(sessionId: string): Promise<string | null> {
+  const response = await fetch(`${API_BASE}/sessions/${sessionId}/scenecard`, {
+    cache: "no-store",
+  });
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error(`Failed to load scene card (${response.status})`);
+  const text = (await response.text()).trim();
+  try {
+    return sceneCardFromRecord(JSON.parse(text));
+  } catch {
+    return null;
+  }
+}
+
+export async function uploadVideo(file: File, officerId?: string): Promise<SessionSummary> {
+  const form = new FormData();
+  form.append("file", file);
+  if (officerId) form.append("officer_id", officerId);
+  const response = await fetch(`${API_BASE}/sessions/upload`, { method: "POST", body: form });
+  if (!response.ok) throw new Error(`Failed to upload video (${response.status})`);
+  return response.json();
+}
+
 export function frameUrl(sessionId: string, index: number): string {
   return `${API_BASE}/sessions/${sessionId}/frames/${index}`;
 }

@@ -42,6 +42,7 @@ class LiveAIService:
         self._voice_id = settings.elevenlabs_voice_id
         self._tts_model = settings.elevenlabs_tts_model
         self._stt_model = settings.elevenlabs_stt_model
+        self._stt_language = settings.elevenlabs_stt_language
         self._policeai_base_url = settings.policeai_base_url.rstrip("/")
         self._policeai_model = settings.policeai_model
         # Nemotron composes the SCENE CARD before PoliceAI reasons over it. This is the second
@@ -65,10 +66,18 @@ class LiveAIService:
                     headers={"xi-api-key": self._elevenlabs_key},
                     # Diarize + word timestamps so the speaker can be labeled from the dominant
                     # voice's audio alone (see speaker_id.label_dominant_speaker).
+                    # tag_audio_events=false: don't transcribe non-speech noise as "(sniffling)"
+                    # etc.; language_code pins the language so noise isn't tagged in random ones.
                     data={
                         "model_id": self._stt_model,
                         "diarize": "true",
                         "timestamps_granularity": "word",
+                        "tag_audio_events": "false",
+                        **(
+                            {"language_code": self._stt_language}
+                            if self._stt_language
+                            else {}
+                        ),
                     },
                     files={"file": ("clip.webm", audio_chunk, "audio/webm")},
                 )

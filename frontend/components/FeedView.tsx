@@ -17,7 +17,7 @@ function isCriticalLabel(label: string): boolean {
 /** Live video with a normalized bounding-box overlay scaled to the player size. */
 export function FeedView({ videoRef, boxes, active }: FeedViewProps) {
   return (
-    <div className="relative aspect-video w-full overflow-hidden rounded-xl border border-border bg-black">
+    <div className="relative aspect-video w-full overflow-hidden rounded-xl border border-border bg-black lg:aspect-auto lg:h-full">
       <video ref={videoRef} muted playsInline className="h-full w-full object-cover" />
 
       {!active && (
